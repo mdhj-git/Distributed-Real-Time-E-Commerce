@@ -1,0 +1,7 @@
+{
+    "Shared": true,
+    "Users": true,
+    "Products": true,
+    "Orders": true,
+    "Notifications": true
+}

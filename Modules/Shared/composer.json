@@ -1,0 +1,8 @@
+{
+    "name": "modules/shared",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Shared\\": ""
+        }
+    }
+}
