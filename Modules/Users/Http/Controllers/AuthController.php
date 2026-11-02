@@ -4,13 +4,13 @@ namespace Modules\Users\Http\Controllers;
 
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Modules\Shared\Helpers\ApiResponse;
 use Modules\Users\Http\Requests\LoginRequest;
 use Modules\Users\Http\Requests\RegisterRequest;
 use Modules\Users\Http\Resources\UserResource;
 use Modules\Users\Services\AuthService;
-use Illuminate\Http\Response;
 
 class AuthController extends Controller
 {
@@ -21,11 +21,11 @@ class AuthController extends Controller
     // POST /api/v1/auth/register
     public function register(RegisterRequest $request): JsonResponse
     {
-        $user = $this->authService->register($request->validated());
+        $user  = $this->authService->register($request->validated());
         $token = auth('api')->login($user);
 
         return ApiResponse::created([
-            'user' => new UserResource($user),
+            'user'  => new UserResource($user),
             'token' => $token,
         ]);
     }
@@ -36,12 +36,11 @@ class AuthController extends Controller
         $token = $this->authService->login($request->validated());
 
         if ($token === false) {
-            // يُعالَج كـ 401 بصيغة الأخطاء الموحدة في معالج Laravel المركزي.
             throw new AuthenticationException();
         }
 
         return ApiResponse::ok([
-            'user' => new UserResource(auth('api')->user()),
+            'user'  => new UserResource(auth('api')->user()),
             'token' => $token,
         ]);
     }

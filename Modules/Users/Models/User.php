@@ -3,6 +3,7 @@
 namespace Modules\Users\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Modules\Users\Contracts\UserRole;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
@@ -22,7 +23,8 @@ class User extends Authenticatable implements JWTSubject
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'password'          => 'hashed',
+            'role'              => UserRole::class,
         ];
     }
 
@@ -33,8 +35,6 @@ class User extends Authenticatable implements JWTSubject
 
     public function getJWTCustomClaims(): array
     {
-        return [
-            'role' => $this->role,
-        ];
+        return [];
     }
 }

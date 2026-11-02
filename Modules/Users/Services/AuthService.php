@@ -2,22 +2,29 @@
 
 namespace Modules\Users\Services;
 
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+use Modules\Users\Contracts\UserRole;
 use Modules\Users\Models\User;
 
 class AuthService
 {
     public function register(array $data): User
     {
-        $user = new User();
-        $user->name = $data['name'];
-        $user->email = $data['email'];
+        $user           = new User();
+        $user->name     = $data['name'];
+        $user->email    = $data['email'];
         $user->password = Hash::make($data['password']);
+        $user->role     = UserRole::Customer;
 
-        // لا نأخذ الدور من مدخلات المستخدم.
-        $user->role = 'customer';
-
-        $user->save();
+        try {
+            $user->save();
+        } catch (UniqueConstraintViolationException) {
+            throw ValidationException::withMessages([
+                'email' => ['The email has already been taken.'],
+            ]);
+        }
 
         return $user;
     }
@@ -25,7 +32,7 @@ class AuthService
     public function login(array $credentials): string|false
     {
         return auth('api')->attempt([
-            'email' => $credentials['email'],
+            'email'    => $credentials['email'],
             'password' => $credentials['password'],
         ]);
     }
