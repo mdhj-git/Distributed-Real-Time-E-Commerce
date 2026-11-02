@@ -202,3 +202,13 @@ UPDATE stock_levels SET stock = stock + ? WHERE product_id = ? AND stock + ? >= 
 - لا يُضاف نطاق لم يُطلب.
 - لا تُكتب اختبارات في المراحل من 0أ إلى 4 إلا بقرار الفريق.
 - لا يُعدَّل كود وحدة يملكها زميل. أي خلل يُسجَّل تعليقاً أو Issue.
+
+## 11. التحقق من الدور
+
+- الدوران في `Modules\Users\Contracts\UserRole`: `Admin` و`Customer`. وتعرّف `UsersServiceProvider` البوابتين `admin` و`customer`.
+- مسار المسؤول: `->middleware(['auth:api', 'can:admin'])`. ومسار العميل: `->middleware(['auth:api', 'can:customer'])`.
+- `auth:api` يسبق `can:` دائماً. السبب: `can:` وحدها ترفض الزائر بـ 403 `FORBIDDEN` لا 401 `UNAUTHENTICATED`.
+- لا تعتمد على الحارس الافتراضي. اكتب `auth:api` في المسار و`auth('api')` في الكود. السبب: `defaults.guard` يقرأ `AUTH_GUARD` من البيئة.
+- لا تستورد `Modules\Users\Models\User` خارج الوحدة (القسم 1). استخدم البوابتين و`UserRole` من `Contracts` فقط.
+- الـ Seeder يضبط `role` داخل `updateOrCreate` رغم أنه خارج `$fillable`. وهذا يعمل عبر `db:seed` فقط، لأن الأمر يشغّل الـ Seeder داخل `Model::unguarded`. أي تشغيل آخر يتجاهل `role` بصمت فيبقى الحساب `customer`.
+- لتشغيل Seeder الـ Users وحده: `docker compose exec app php artisan db:seed --class='Modules\Users\Database\Seeders\UsersDatabaseSeeder'`.

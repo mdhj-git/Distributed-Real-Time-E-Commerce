@@ -60,6 +60,24 @@ docker compose exec app php artisan db:seed
 - `db:seed` لا يعمل تلقائياً، فشغّله حين يلزم.
 - لا تشغّل `php` ولا `composer` على جهازك مباشرة.
 
+## الحسابات التجريبية
+
+للتطوير فقط. الـ Seeder لا يفحص البيئة وكلمة المرور معروفة، فلا تشغّله في `production`.
+
+```bash
+docker compose exec app php artisan db:seed
+```
+
+كلمة المرور للحسابات الثلاثة: `password`.
+
+- `demo.admin@shop.test`: الدور `admin`.
+- `demo.customer.a@shop.test`: الدور `customer`.
+- `demo.customer.b@shop.test`: الدور `customer`.
+
+- تسجيل الدخول: `POST /api/v1/auth/login` بالحقلين `email` و`password`. الاستجابة فيها `data.user` و`data.token`.
+- حد المحاولات: 5 في الدقيقة لكل بريد وعنوان IP، والسادسة تعيد 429.
+- قواعد التحقق من الدور في القسم 11 من [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md).
+
 ## بنية الوحدات
 
 الوحدات تحت `Modules/`: `Shared` و`Users` و`Products` و`Orders` و`Notifications`.
