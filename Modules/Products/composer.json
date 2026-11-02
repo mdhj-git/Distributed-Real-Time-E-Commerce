@@ -1,0 +1,8 @@
+{
+    "name": "modules/products",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Products\\": ""
+        }
+    }
+}

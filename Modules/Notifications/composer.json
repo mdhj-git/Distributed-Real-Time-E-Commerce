@@ -1,0 +1,8 @@
+{
+    "name": "modules/notifications",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Notifications\\": ""
+        }
+    }
+}
