@@ -3,18 +3,18 @@
 namespace Modules\Orders\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Modules\Orders\Enums\OrderStatus;
 
 class UpdateOrderStatusRequest extends FormRequest
 {
     /**
-     * Authorization runs before validation, so a customer always gets 403 and never a 422.
+     * The admin role is enforced by the can:admin route middleware, which runs before
+     * validation, so a customer always gets 403 and never a 422.
      */
     public function authorize(): bool
     {
-        return Gate::allows('updateStatus', $this->route('order'));
+        return true;
     }
 
     public function rules(): array

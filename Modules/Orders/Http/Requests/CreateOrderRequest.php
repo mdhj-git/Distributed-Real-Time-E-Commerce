@@ -3,14 +3,15 @@
 namespace Modules\Orders\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Gate;
-use Modules\Orders\Models\Order;
 
 class CreateOrderRequest extends FormRequest
 {
+    /**
+     * The customer role is enforced by the can:customer route middleware.
+     */
     public function authorize(): bool
     {
-        return Gate::allows('create', Order::class);
+        return true;
     }
 
     /**
