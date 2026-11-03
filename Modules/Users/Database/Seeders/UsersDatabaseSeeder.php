@@ -13,20 +13,20 @@ class UsersDatabaseSeeder extends Seeder
     {
         $users = [
             [
-                'email'    => 'demo.admin@shop.test',
-                'name'     => 'Demo Admin',
+                'email'    => 'admin@gmail.com',
+                'name'     => 'Admin',
                 'password' => 'password',
                 'role'     => UserRole::Admin,
             ],
             [
-                'email'    => 'demo.customer.a@shop.test',
-                'name'     => 'Demo Customer A',
+                'email'    => 'customer.a@gmail.com',
+                'name'     => 'Customer A',
                 'password' => 'password',
                 'role'     => UserRole::Customer,
             ],
             [
-                'email'    => 'demo.customer.b@shop.test',
-                'name'     => 'Demo Customer B',
+                'email'    => 'customer.b@gmail.com',
+                'name'     => 'Customer B',
                 'password' => 'password',
                 'role'     => UserRole::Customer,
             ],
