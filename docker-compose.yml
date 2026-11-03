@@ -48,5 +48,42 @@ services:
       interval: 10s
       retries: 10
 
+  inventory:
+    build:
+      context: .
+      dockerfile: services/inventory/Dockerfile
+    environment:
+      INVENTORY_DB_HOST: inventory-db
+      INVENTORY_DB_PORT: 3306
+      INVENTORY_DB_NAME: ${INVENTORY_DB_NAME}
+      INVENTORY_DB_USER: ${INVENTORY_DB_USER}
+      INVENTORY_DB_PASS: ${INVENTORY_DB_PASS}
+      GRPC_PORT: 50051
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+
+  inventory-db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${INVENTORY_DB_NAME}
+      MYSQL_USER: ${INVENTORY_DB_USER}
+      MYSQL_PASSWORD: ${INVENTORY_DB_PASS}
+      MYSQL_ROOT_PASSWORD: ${INVENTORY_DB_ROOT_PASS}
+    volumes:
+      - inventory_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 10s
+      retries: 10
+      start_period: 30s
+
+  grpcurl:
+    image: fullstorydev/grpcurl:latest
+    volumes:
+      - ./proto:/proto:ro
+    profiles: ["tools"]
+
 volumes:
   mysql_data:
+  inventory_db_data:

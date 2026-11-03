@@ -17,6 +17,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y libzip-dev libpng-dev libjpeg62-turbo-dev libwebp-dev libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# gRPC extension — طبقة مستقلة، تعاد فقط عند تعديل هذا السطر بالذات
+RUN apt-get update && apt-get install -y --no-install-recommends zlib1g-dev \
+    && curl -fsSL https://pecl.php.net/get/grpc-1.62.0.tgz -o /tmp/grpc.tar.gz \
+    && mkdir -p /usr/src/php/ext/grpc \
+    && tar -xzf /tmp/grpc.tar.gz -C /usr/src/php/ext/grpc --strip-components=1 \
+    && rm /tmp/grpc.tar.gz \
+    && docker-php-ext-install -j"$(nproc)" grpc \
+    && apt-get purge -y zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 COPY php.ini /usr/local/etc/php/conf.d/app.ini
