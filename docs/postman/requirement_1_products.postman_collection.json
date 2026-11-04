@@ -1,0 +1,771 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-1111-4bbb-8ccc-000000000001",
+    "name": "E-Commerce R1 - Products & Security",
+    "description": "مجموعة طلبات المتطلب الأول: المستخدمون والمصادقة + المنتجات والتصنيفات + إثبات الأمان.\n\nخطوات البداية:\n1. استورد هذا الملف وملف البيئة local.postman_environment.json.\n2. اختر البيئة \"E-Commerce Local\" أعلى Postman.\n3. شغّل Auth / Login (Admin) أولاً: يحفظ التوكن تلقائياً في المتغير {{token}}.\n4. شغّل Categories / List: يحفظ {{category_id}}.\n5. شغّل Products / List: يحفظ {{product_id}}.\n6. بعدها جرّب بقية الطلبات بالترتيب.\n\nملاحظة: طلب Create Product من نوع multipart، اختر صورة png/jpg/webp من جهازك في الحقل images[].",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Guard against an empty base_url (a blank environment value shadows",
+          "// the collection variable and produces an invalid URI like http:///?...).",
+          "if (!pm.variables.get('base_url')) {",
+          "    pm.variables.set('base_url', 'http://localhost:8080');",
+          "}"
+        ]
+      }
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "customer_token",
+      "value": ""
+    },
+    {
+      "key": "product_id",
+      "value": ""
+    },
+    {
+      "key": "category_id",
+      "value": ""
+    },
+    {
+      "key": "image_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('unified envelope', () => pm.expect(pm.response.json()).to.have.property('data'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/health",
+            "description": "فحص صحة الخدمة. يجب أن يعيد 200 مع { data: { status: \"ok\" } }."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register (Customer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('role is customer', () => pm.expect(pm.response.json().data.user.role).to.eql('customer'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Customer\",\n  \"email\": \"postman.{{$timestamp}}@shop.test\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/auth/register",
+            "description": "تسجيل عميل جديد. الدور دائماً customer حتى لو أرسلت role في الجسم."
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Admin) - يحفظ التوكن",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.token) {",
+                  "    pm.collectionVariables.set('token', body.data.token);",
+                  "    console.log('Admin token saved to collection variable token');",
+                  "}",
+                  "pm.test('admin role', () => pm.expect(body.data.user.role).to.eql('admin'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/auth/login",
+            "description": "رابط تسجيل الدخول الجاهز للتوكن:\n{{base_url}}/api/v1/auth/login\n\nهذا الطلب يحفظ data.token تلقائياً في المتغير {{token}}، فتصبح بقية الطلبات المحمية جاهزة دون نسخ يدوي."
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Customer) - يحفظ customer_token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.token) {",
+                  "    pm.collectionVariables.set('customer_token', body.data.token);",
+                  "    console.log('Customer token saved to collection variable customer_token');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer_email}}\",\n  \"password\": \"{{customer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/auth/login",
+            "description": "دخول العميل وحفظ توكنه في متغير منفصل customer_token، لاستخدامه في طلبات إثبات 403."
+          },
+          "response": []
+        },
+        {
+          "name": "Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('has role', () => pm.expect(pm.response.json().data).to.have.property('role'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/auth/me",
+            "description": "يعيد المستخدم الحالي. يستخدم {{token}} المحفوظ من تسجيل الدخول."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.token) {",
+                  "    pm.collectionVariables.set('token', body.data.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/v1/auth/refresh",
+            "description": "يجدد الرمز ويحفظ الجديد في {{token}}."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/v1/auth/logout",
+            "description": "يشطب الرمز الحالي. بعد تشغيله يصبح {{token}} غير صالح (401) حتى تسجل الدخول من جديد."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List categories (يحفظ category_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body.data && body.data.length) {",
+                  "    pm.collectionVariables.set('category_id', body.data[0].id);",
+                  "    console.log('category_id =', body.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/categories",
+            "description": "قائمة التصنيفات العامة. يحفظ أول معرّف في {{category_id}} لاستخدامه في إنشاء منتج."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "List products (يحفظ product_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('has meta', () => pm.expect(body).to.have.property('meta'));",
+                  "if (body.data && body.data.length) {",
+                  "    pm.collectionVariables.set('product_id', body.data[0].id);",
+                  "    console.log('product_id =', body.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products?page=1&per_page=15",
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "15"
+                }
+              ]
+            },
+            "description": "قائمة المنتجات العامة مع تقسيم الصفحات. meta تحوي current_page وper_page وtotal وlast_page."
+          },
+          "response": []
+        },
+        {
+          "name": "Filter by category + search",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/products?category_id={{category_id}}&search=&page=1&per_page=5",
+              "query": [
+                {
+                  "key": "category_id",
+                  "value": "{{category_id}}"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "per_page",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "فلترة حسب التصنيف + بحث بالاسم. جرّب search=Headphones أو search=Camera."
+          },
+          "response": []
+        },
+        {
+          "name": "Show product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('has price', () => {",
+                  "    const d = pm.response.json().data;",
+                  "    pm.expect(d).to.have.property('price');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/products/{{product_id}}",
+            "description": "عرض منتج واحد مع تصنيفه وصوره."
+          },
+          "response": []
+        },
+        {
+          "name": "Create product (Admin, multipart + image)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('has Location header', () => pm.expect(pm.response.headers.has('Location')).to.be.true);",
+                  "const body = pm.response.json();",
+                  "if (body.data) {",
+                  "    pm.collectionVariables.set('product_id', body.data.id);",
+                  "    if (body.data.images && body.data.images.length) {",
+                  "        pm.collectionVariables.set('image_id', body.data.images[0].id);",
+                  "    }",
+                  "    console.log('product_id =', body.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Postman Camera",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Created from Postman with an image",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "199.90",
+                  "type": "text"
+                },
+                {
+                  "key": "category_id",
+                  "value": "{{category_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "images[]",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": "{{base_url}}/api/v1/products",
+            "description": "إنشاء منتج (admin فقط). اختر صورة png/jpg/webp من جهازك في الحقل images[]. الحد الأقصى 5 صور و2MB لكل صورة.\n\nملاحظة: الرفع دائماً POST، ولا تحاول رفع ملف عبر PATCH."
+          },
+          "response": []
+        },
+        {
+          "name": "Update product (Admin, JSON)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('price updated', () => pm.expect(pm.response.json().data.price).to.eql(189.5));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Camera Updated\",\n  \"price\": 189.50,\n  \"description\": \"Updated from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}/api/v1/products/{{product_id}}",
+            "description": "تعديل بيانات المنتج (JSON فقط). لا يعدّل المخزون ولا يرفع صوراً."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload image (Admin, multipart)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "images[]",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": "{{base_url}}/api/v1/products/{{product_id}}/images",
+            "description": "إضافة صورة لمنتج موجود (admin فقط). اختر صورة من جهازك."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete product (Admin, soft delete)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/v1/products/{{product_id}}",
+            "description": "حذف منطقي (admin فقط). المنتج يختفي من القوائم لكن يبقى في قاعدة البيانات ومع صوره."
+          },
+          "response": []
+        },
+        {
+          "name": "Show deleted product (expect 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('NOT_FOUND code', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/products/{{product_id}}",
+            "description": "بعد الحذف المنطقي يجب أن يعيد 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Security Proof (Products)",
+      "item": [
+        {
+          "name": "Create product without token (expect 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthenticated', () => pm.response.to.have.status(401));",
+                  "pm.test('UNAUTHENTICATED code', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHENTICATED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "No Token Product",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "10.00",
+                  "type": "text"
+                },
+                {
+                  "key": "category_id",
+                  "value": "{{category_id}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{base_url}}/api/v1/products",
+            "description": "طلب بلا رمز يجب أن يعيد 401."
+          },
+          "response": []
+        },
+        {
+          "name": "Create product as customer (expect 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));",
+                  "pm.test('FORBIDDEN code', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Customer Product",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "10.00",
+                  "type": "text"
+                },
+                {
+                  "key": "category_id",
+                  "value": "{{category_id}}",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{base_url}}/api/v1/products",
+            "description": "شغّل Auth / Login (Customer) أولاً. العميل لا يستطيع إنشاء منتج: 403."
+          },
+          "response": []
+        },
+        {
+          "name": "per_page=51 (expect 422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 Validation Failed', () => pm.response.to.have.status(422));",
+                  "pm.test('VALIDATION_FAILED code', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_FAILED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/products?per_page=51",
+            "description": "تجاوز حد per_page يُرفض بـ 422 ولا يُقصّ بصمت."
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid token (expect 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthenticated', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "invalid.token.value",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/auth/me",
+            "description": "رمز معدّل يدوياً أو منتهٍ: 401."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
