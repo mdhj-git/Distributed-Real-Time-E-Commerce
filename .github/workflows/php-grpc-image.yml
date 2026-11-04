@@ -1,0 +1,75 @@
+name: php-grpc-image
+
+on:
+  push:
+    paths:
+      - 'docker/php-grpc/**'
+      - '.github/workflows/php-grpc-image.yml'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Rebuild and overwrite the tag even if it already exists'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: php-grpc-image
+  cancel-in-progress: false
+
+env:
+  IMAGE_TAG: ghcr.io/mdhj-git/php-grpc:8.3-fpm-grpc1.85.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Guard against overwriting an existing tag
+        id: guard
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$FORCE" = "true" ]; then
+            echo "force=true was requested: the tag will be rebuilt and overwritten."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if out=$(docker buildx imagetools inspect "$IMAGE_TAG" 2>&1); then
+            echo "$IMAGE_TAG already exists in the registry: skipping the build."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          elif echo "$out" | grep -qiE 'not found|manifest unknown|name unknown'; then
+            echo "$IMAGE_TAG does not exist yet: building it."
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$out"
+            echo "Cannot tell whether $IMAGE_TAG exists. Failing instead of risking an overwrite."
+            exit 1
+          fi
+
+      - name: Build and push
+        if: steps.guard.outputs.build == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: docker/php-grpc
+          push: true
+          tags: ${{ env.IMAGE_TAG }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
