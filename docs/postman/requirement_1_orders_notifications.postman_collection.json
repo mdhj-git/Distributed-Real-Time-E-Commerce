@@ -1,0 +1,857 @@
+{
+  "info": {
+    "_postman_id": "c3d4e5f6-3333-4ddd-9eee-000000000003",
+    "name": "E-Commerce R1 - Orders & Notifications",
+    "description": "مجموعة طلبات الطلبات والإشعارات وإثبات الرفض.\n\nالخطوات:\n1. استورد هذا الملف مع local.postman_environment.json واختر البيئة E-Commerce Local.\n2. شغّل Auth / Login (Admin) ثم Login (Customer) ثم Login (Customer B).\n3. ضع رقم منتج موجود بالمتغير product_id (تبويب Variables بهذه المجموعة)، مثلاً 1.\n4. شغّل Orders بالترتيب: Create ثم Confirm.\n5. شغّل Notifications ثم Rejection tests.\n\nملاحظة: إنشاء الطلب يحتاج تنفيذ InventoryService من وحدة Products.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (Admin) - يحفظ token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('token', pm.response.json().data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "description": "تسجيل الدخول وحفظ التوكن بالمتغير {{token}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Customer) - يحفظ customer_token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('customer_token', pm.response.json().data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "description": "تسجيل الدخول وحفظ التوكن بالمتغير {{customer_token}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer_email}}\",\n  \"password\": \"{{customer_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Customer B) - يحفظ customer_b_token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('customer_b_token', pm.response.json().data.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "description": "تسجيل الدخول بحساب العميل الثاني (demo.customer.b@shop.test) وحفظ التوكن بالمتغير {{customer_b_token}}. يلزمه db:seed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer_b_email}}\",\n  \"password\": \"{{customer_b_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "List orders (Customer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('meta has 4 fields', () => pm.expect(pm.response.json().meta).to.have.all.keys('current_page','per_page','total','last_page'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders?per_page=5",
+            "description": "طلبات العميل فقط."
+          },
+          "response": []
+        },
+        {
+          "name": "Create order (Customer) - يحفظ order_id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('order_id', pm.response.json().data.id);",
+                  "pm.test('Location header', () => pm.expect(pm.response.headers.has('Location')).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders",
+            "description": "يحتاج {{product_id}} من مجموعة Products (شغّل Products / List أولاً). السعر والإجمالي لا يُرسلان أبداً.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"product_id\": \"{{product_id}}\",\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get order (Customer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}",
+            "description": "صاحب الطلب فقط أو المسؤول."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm order (Admin) - يطلق إشعار",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('status confirmed', () => pm.expect(pm.response.json().data.status).to.eql('confirmed'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}/status",
+            "description": "pending ← confirmed. يطلق OrderStatusChanged فيصل إشعار للعميل.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"confirmed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List my notifications (Customer) - يحفظ notification_id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data; pm.test('has notifications', () => pm.expect(d.length).to.be.above(0));",
+                  "if (d.length) pm.collectionVariables.set('notification_id', d[0].id);",
+                  "pm.test('meta has 4 fields', () => pm.expect(pm.response.json().meta).to.have.all.keys('current_page','per_page','total','last_page'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications",
+            "description": "الأحدث أولاً. بعد إنشاء طلب وتأكيده يجب أن يظهر إشعاران."
+          },
+          "response": []
+        },
+        {
+          "name": "List unread only",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('all unread', () => pm.response.json().data.forEach(n => pm.expect(n.read_at).to.be.null));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications?unread=1",
+            "description": "غير المقروءة فقط."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark one as read (Customer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "pm.test('read_at set', () => pm.expect(pm.response.json().data.read_at).to.not.be.null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications/{{notification_id}}/read",
+            "description": "صاحب الإشعار فقط. تكرار الطلب آمن."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark all as read (Customer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications/read-all",
+            "description": "يعيد 204 بلا جسم."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Rejection tests (إثبات الرفض)",
+      "item": [
+        {
+          "name": "Orders - guest -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('error code UNAUTHENTICATED', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHENTICATED'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/orders",
+            "description": "بدون توكن."
+          },
+          "response": []
+        },
+        {
+          "name": "Orders - Customer B reads Customer A's order -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('error code FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_b_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}",
+            "description": "العميل B يطلب طلباً يملكه العميل A. السياسة (Policy) هي التي ترفض لا الـ middleware."
+          },
+          "response": []
+        },
+        {
+          "name": "Orders - Customer B list never contains Customer A's order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const ids = pm.response.json().data.map(o => String(o.id));",
+                  "pm.test('order of customer A is absent', () => pm.expect(ids).to.not.include(String(pm.collectionVariables.get('order_id'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_b_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders?per_page=50",
+            "description": "قائمة العميل B تُفلتر في الاستعلام نفسه بمعرّف المالك، فلا يظهر فيها طلب العميل A."
+          },
+          "response": []
+        },
+        {
+          "name": "Orders - Admin creates order -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('error code FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders",
+            "description": "can:customer يرفض المسؤول.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Orders - Customer changes status -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('error code FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}/status",
+            "description": "can:admin يرفض العميل.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"cancelled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Orders - invalid transition -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422', () => pm.response.to.have.status(422));",
+                  "pm.test('error code INVALID_STATUS_TRANSITION', () => pm.expect(pm.response.json().error.code).to.eql('INVALID_STATUS_TRANSITION'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}/status",
+            "description": "confirmed ← delivered غير مسموح (يجب المرور بـ shipped).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"delivered\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Orders - invalid status value -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422', () => pm.response.to.have.status(422));",
+                  "pm.test('error code VALIDATION_FAILED', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_FAILED'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}/status",
+            "description": "قيمة خارج الـ enum.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"teleported\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Notifications - guest -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', () => pm.response.to.have.status(401));",
+                  "pm.test('error code UNAUTHENTICATED', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHENTICATED'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/notifications",
+            "description": "بدون توكن."
+          },
+          "response": []
+        },
+        {
+          "name": "Notifications - Customer B marks Customer A's notification -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('error code FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_b_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications/{{notification_id}}/read",
+            "description": "العميل B يحاول تعليم إشعار العميل A كمقروء."
+          },
+          "response": []
+        },
+        {
+          "name": "Notifications - Admin marks a customer's notification -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));",
+                  "pm.test('error code FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications/{{notification_id}}/read",
+            "description": "حتى المسؤول لا يعدّل إشعار غيره: الإشعار ملك صاحبه فقط."
+          },
+          "response": []
+        },
+        {
+          "name": "Notifications - missing id -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('error code NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications/999999/read",
+            "description": "رسالة ثابتة بلا اسم الصنف."
+          },
+          "response": []
+        },
+        {
+          "name": "Notifications - per_page=0 -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422', () => pm.response.to.have.status(422));",
+                  "pm.test('error code VALIDATION_FAILED', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_FAILED'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications?per_page=0",
+            "description": "تحقق المدخلات."
+          },
+          "response": []
+        },
+        {
+          "name": "Notifications - wrong method -> 405",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('405', () => pm.response.to.have.status(405));",
+                  "pm.test('error code METHOD_NOT_ALLOWED', () => pm.expect(pm.response.json().error.code).to.eql('METHOD_NOT_ALLOWED'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/notifications",
+            "description": "لا يوجد DELETE."
+          },
+          "response": []
+        },
+        {
+          "name": "Unknown route -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404', () => pm.response.to.have.status(404));",
+                  "pm.test('error code NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));",
+                  "pm.test('envelope', () => { const e = pm.response.json().error; pm.expect(e).to.have.all.keys('code','message','details','request_id'); });",
+                  "pm.test('no stack trace', () => pm.expect(pm.response.text()).to.not.include('trace'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/does-not-exist",
+            "description": "الغلاف الموحد للأخطاء."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "customer_token",
+      "value": ""
+    },
+    {
+      "key": "product_id",
+      "value": ""
+    },
+    {
+      "key": "order_id",
+      "value": ""
+    },
+    {
+      "key": "notification_id",
+      "value": ""
+    },
+    {
+      "key": "customer_b_email",
+      "value": "demo.customer.b@shop.test"
+    },
+    {
+      "key": "customer_b_password",
+      "value": "password"
+    },
+    {
+      "key": "customer_b_token",
+      "value": ""
+    }
+  ]
+}
