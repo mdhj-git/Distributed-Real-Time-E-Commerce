@@ -3,6 +3,7 @@
 namespace Modules\Products\Providers;
 
 use Illuminate\Support\Facades\Gate;
+use Modules\Products\Console\ImportStockCommand;
 use Modules\Products\Contracts\InventoryService;
 use Modules\Products\Contracts\ProductCatalog;
 use Modules\Products\Models\Product;
@@ -50,5 +51,9 @@ class ProductsServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         Gate::policy(Product::class, ProductPolicy::class);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([ImportStockCommand::class]);
+        }
     }
 }
