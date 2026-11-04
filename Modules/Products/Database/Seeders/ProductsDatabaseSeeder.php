@@ -3,9 +3,9 @@
 namespace Modules\Products\Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Modules\Products\Contracts\InventoryService;
 use Modules\Products\Models\Category;
 use Modules\Products\Models\Product;
+use Modules\Products\Services\StockSynchronizer;
 
 class ProductsDatabaseSeeder extends Seeder
 {
@@ -38,7 +38,7 @@ class ProductsDatabaseSeeder extends Seeder
             ],
         ];
 
-        $inventory = app(InventoryService::class);
+        $targets = [];
 
         foreach ($products as $data) {
             $category = Category::query()->where('slug', $data['category'])->firstOrFail();
@@ -52,12 +52,12 @@ class ProductsDatabaseSeeder extends Seeder
                 ],
             );
 
-            // Idempotent: a second run finds the target already reached.
-            $current = $inventory->getStock([$product->id])[$product->id] ?? 0;
-
-            if ($current !== $data['stock']) {
-                $inventory->adjust($product->id, $data['stock'] - $current);
-            }
+            $targets[$product->id] = $data['stock'];
         }
+
+        // Quantities go through the InventoryService contract, never to a table directly. The
+        // synchronizer reads the current quantity and adjusts by the difference, so a second run
+        // changes nothing. db:seed needs the inventory service to be running.
+        app(StockSynchronizer::class)->syncTo($targets);
     }
 }

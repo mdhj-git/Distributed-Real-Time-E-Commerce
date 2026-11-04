@@ -136,6 +136,44 @@ docker compose exec app php artisan db:seed
 - حد المحاولات: 5 في الدقيقة لكل بريد وعنوان IP، والسادسة تعيد 429.
 - قواعد التحقق من الدور في القسم 11 من [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md).
 
+## نقل المخزون إلى خدمة المخزون
+
+كانت الكميات في جدول `stock_levels` داخل قاعدة التطبيق، وصارت في خدمة المخزون. الأمر `inventory:import-stock` ينقل الكميات الموجودة عبر عقد `InventoryService` (يقرأ الكمية الحالية ثم يعدّل بالفرق إلى الكمية المطلوبة)، فتشغيله مرتين يعطي النتيجة نفسها والثاني لا يعدّل شيئاً.
+
+**الترتيب إلزامي:**
+
+```bash
+# 1) شغّلوا خدمة المخزون (وتأكدوا أن ربط InventoryService على gRPC)
+docker compose up -d inventory inventory-db
+
+# 2) عرض ما سيحدث دون أي تعديل
+docker compose exec app php artisan inventory:import-stock --dry-run
+
+# 3) الاستيراد
+docker compose exec app php artisan inventory:import-stock
+
+# 4) التحقق: مقارنة فقط. يجب أن ينجح (رمز الخروج 0)
+docker compose exec app php artisan inventory:import-stock --verify
+
+# 5) فقط بعد نجاح الخطوة 4: أضيفوا STOCK_LEVELS_DROP_CONFIRMED=true إلى ملف .env
+#    ثم شغّلوا المهاجرة التي تحذف جدول stock_levels
+docker compose exec app php artisan migrate
+```
+
+- **سبب خطوة التأكيد:** سكربت بدء الحاوية يشغّل `php artisan migrate --force` عند كل إقلاع. فمهاجرة الحذف ترفض العمل (وتتوقف الحاوية برسالة واضحة) ما دام الجدول فيه كميات، حتى لا يُحذف قبل الاستيراد.
+- إن توقفت حاوية `app` بسبب هذه الرسالة فنفّذوا أوامر `inventory:import-stock` بهذه الصيغة بدل `exec` (وخدمة المخزون شغّالة): `docker compose run --rm --no-deps --entrypoint php app artisan inventory:import-stock --verify`.
+- قاعدة بيانات جديدة (`migrate:fresh`) لا تتأثر، لأن الجدول فارغ.
+- بعد نجاح الحذف أزيلوا `STOCK_LEVELS_DROP_CONFIRMED` من `.env`.
+
+- الخيارات: `--dry-run` (يعرض ولا يعدّل)، `--verify` (يقارن فقط ويفشل عند أي اختلاف)، `--chunk=100` (عدد المنتجات في كل نداء `getStock`، من 1 إلى 1000). ولا يجتمع `--dry-run` مع `--verify`.
+- رمز الخروج: `0` عند النجاح، و`1` عند الفشل، وعند عدم التطابق في `--verify`، وعند عدم توفر الخدمة.
+- المخرجات تنتهي بملخص: عدد المنتجات، والمعدّلة، وغير المتغيّرة.
+- إن توقفت الخدمة في منتصف الاستيراد يبقى ما نُقل قبل التوقف، وإعادة تشغيل الأمر نفسه تكمل من حيث توقف.
+- الأمر يرفض العمل ما دام `InventoryService` مربوطاً بالتنفيذ المحلي، لأن المصدر والوجهة عندها جدول واحد ولا قيمة للنجاح.
+- للاستعمال أثناء الانتقال فقط وبلا طلبات متزامنة: قراءة الكمية ثم تعديلها ليست ذرّية بالنسبة لحجز يحدث في اللحظة نفسها.
+- **تحذير:** حذف `stock_levels` لا رجعة فيه للبيانات (`down()` يعيد الهيكل فقط). لا تشغّل مهاجرة الحذف قبل نجاح `--verify`.
+- `db:seed` يضبط كميات المنتجات التجريبية عبر الخدمة نفسها، فيحتاج خدمة المخزون شغّالة.
+
 ## بنية الوحدات
 
 الوحدات تحت `Modules/`: `Shared` و`Users` و`Products` و`Orders` و`Notifications`.
