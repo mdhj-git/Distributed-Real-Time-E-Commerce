@@ -7,17 +7,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProductImage extends Model
 {
-    /**
-     * Product images are public content, so they live on the public disk and
-     * are served through the storage symlink instead of a private signed URL.
-     */
-    public const DISK = 'public';
-
     protected $fillable = [
         'product_id',
         'path',
         'position',
     ];
+
+    /**
+     * The single place the image disk is read. The module config decides it,
+     * so the same value serves uploads and URLs.
+     */
+    public static function disk(): string
+    {
+        return config('products.image_disk', 'public');
+    }
 
     protected function casts(): array
     {
