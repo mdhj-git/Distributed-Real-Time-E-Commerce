@@ -131,10 +131,11 @@ docker compose start inventory
 
 ### 10. إلغاء طلب مرتين
 
+`{id}` هنا هو معرّف الطلب الناجح (201) من الخطوة 5.
+
 ```http
 PATCH /api/v1/orders/{id}/status
 ```
-
 ```json
 { "status": "cancelled" }
 ```

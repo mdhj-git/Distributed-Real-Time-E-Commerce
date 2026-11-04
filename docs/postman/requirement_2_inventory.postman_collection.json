@@ -103,15 +103,16 @@
             "script": {
               "exec": [
                 "pm.sendRequest({",
-                "    url: pm.collectionVariables.get('base_url') + '/api/v1/products/' + pm.collectionVariables.get('product_id'),",
+                "    url: pm.variables.get('base_url') + '/api/v1/products/' + pm.collectionVariables.get('product_id'),",
                 "    method: 'GET'",
                 "}, function (err, response) {",
-                "    if (!err && response.code === 200) {",
-                "        const current = response.json().data.stock;",
-                "        const body = JSON.parse(pm.request.body.raw);",
-                "        body.adjustment = 1 - current;",
-                "        pm.request.body.update(JSON.stringify(body));",
+                "    if (err || response.code !== 200) {",
+                "        throw new Error('Pre-request failed to read current stock: ' + (err ? err.message : response.code));",
                 "    }",
+                "    const current = response.json().data.stock;",
+                "    const body = JSON.parse(pm.request.body.raw);",
+                "    body.adjustment = 1 - current;",
+                "    pm.request.body.update(JSON.stringify(body));",
                 "});"
               ]
             }
