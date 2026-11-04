@@ -2,8 +2,14 @@
 
 namespace Modules\Products\Providers;
 
+use Illuminate\Support\Facades\Gate;
+use Modules\Products\Contracts\InventoryService;
+use Modules\Products\Contracts\ProductCatalog;
+use Modules\Products\Models\Product;
+use Modules\Products\Policies\ProductPolicy;
+use Modules\Products\Services\LocalInventoryService;
+use Modules\Products\Services\ProductCatalogService;
 use Nwidart\Modules\Support\ModuleServiceProvider;
-use Illuminate\Console\Scheduling\Schedule;
 
 class ProductsServiceProvider extends ModuleServiceProvider
 {
@@ -18,13 +24,6 @@ class ProductsServiceProvider extends ModuleServiceProvider
     protected string $nameLower = 'products';
 
     /**
-     * Command classes to register.
-     *
-     * @var string[]
-     */
-    // protected array $commands = [];
-
-    /**
      * Provider classes to register.
      *
      * @var string[]
@@ -35,12 +34,21 @@ class ProductsServiceProvider extends ModuleServiceProvider
     ];
 
     /**
-     * Define module schedules.
-     * 
-     * @param $schedule
+     * Bind the public contracts of this module. Other modules depend on the
+     * interfaces only, so this is the single place the implementation is chosen.
      */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    public function register(): void
+    {
+        parent::register();
+
+        $this->app->bind(ProductCatalog::class, ProductCatalogService::class);
+        $this->app->bind(InventoryService::class, LocalInventoryService::class);
+    }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        Gate::policy(Product::class, ProductPolicy::class);
+    }
 }

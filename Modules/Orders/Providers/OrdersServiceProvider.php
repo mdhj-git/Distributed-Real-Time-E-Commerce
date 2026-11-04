@@ -4,6 +4,9 @@ namespace Modules\Orders\Providers;
 
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Gate;
+use Modules\Orders\Models\Order;
+use Modules\Orders\Policies\OrderPolicy;
 
 class OrdersServiceProvider extends ModuleServiceProvider
 {
@@ -43,4 +46,11 @@ class OrdersServiceProvider extends ModuleServiceProvider
     // {
     //     $schedule->command('inspire')->hourly();
     // }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        Gate::policy(Order::class, OrderPolicy::class);
+    }
 }
