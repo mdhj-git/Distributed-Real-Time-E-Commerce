@@ -10,7 +10,7 @@ class Order extends Model
 {
     protected $table = 'orders';
 
-    protected $fillable = ['user_id', 'status', 'total'];
+    protected $fillable = ['reference', 'user_id', 'status', 'total'];
 
     protected function casts(): array
     {

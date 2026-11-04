@@ -4,6 +4,8 @@ namespace Modules\Orders\Services;
 
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Modules\Orders\Contracts\Events\OrderPlaced;
 use Modules\Orders\Contracts\Events\OrderStatusChanged;
@@ -15,6 +17,7 @@ use Modules\Products\Contracts\DTOs\StockItem;
 use Modules\Products\Contracts\InventoryService;
 use Modules\Products\Contracts\ProductCatalog;
 use Modules\Shared\Helpers\Money;
+use Throwable;
 
 class OrderService
 {
@@ -24,49 +27,68 @@ class OrderService
     ) {}
 
     /**
+     * Stock lives in a separate service with its own storage, so a single database transaction can no
+     * longer cover both. The order is therefore: reserve first (atomic on its own), then save the order,
+     * and give the reservation back if saving fails.
+     *
      * @param  array<int, array{product_id: int|string, quantity: int|string}>  $items
      */
     public function create(int $userId, array $items): Order
     {
         $quantities = $this->mergeItems($items);
 
-        $order = DB::transaction(function () use ($userId, $items, $quantities): Order {
-            $snapshots = $this->catalog->findForOrder(array_keys($quantities));
+        // A missing or soft-deleted product is a 422 before anything is reserved.
+        $snapshots = $this->catalog->findForOrder(array_keys($quantities));
+        $this->assertProductsExist($items, $snapshots);
 
-            $this->assertProductsExist($items, $snapshots);
+        // Internal id that ties the reservation to this order. It is never shown in any response.
+        $reference = Str::uuid()->toString();
 
-            // $quantities is sorted by product_id, so every request locks stock rows in the same order.
-            $this->inventory->reserve(array_map(
-                fn (int $productId, int $quantity) => new StockItem($productId, $quantity),
-                array_keys($quantities),
-                $quantities,
-            ));
+        // $quantities is sorted by product_id, so every request reserves in the same order.
+        $stockItems = array_map(
+            fn (int $productId, int $quantity) => new StockItem($productId, $quantity),
+            array_keys($quantities),
+            $quantities,
+        );
 
-            // Price and total come from the server's product data only, in integer cents.
-            $totalCents = 0;
-            $rows = [];
-            foreach ($quantities as $productId => $quantity) {
-                $snapshot = $snapshots[$productId];
-                $totalCents += $snapshot->priceCents * $quantity;
-                $rows[] = [
-                    'product_id' => $productId,
-                    'product_name' => $snapshot->name,
-                    'unit_price' => Money::fromCents($snapshot->priceCents),
-                    'quantity' => $quantity,
-                ];
-            }
+        // Outside any DB::transaction. There is no getStock check first: the reservation alone decides,
+        // and its insufficient-stock exception (409) propagates untouched.
+        $this->inventory->reserve($reference, $stockItems);
 
-            $order = Order::create([
-                'user_id' => $userId,
-                'status' => OrderStatus::Pending,
-                'total' => Money::fromCents($totalCents),
-            ]);
-            $order->items()->createMany($rows);
+        try {
+            $order = DB::transaction(function () use ($userId, $reference, $quantities, $snapshots): Order {
+                // Price and total come from the server's product data only, in integer cents.
+                $totalCents = 0;
+                $rows = [];
+                foreach ($quantities as $productId => $quantity) {
+                    $snapshot = $snapshots[$productId];
+                    $totalCents += $snapshot->priceCents * $quantity;
+                    $rows[] = [
+                        'product_id' => $productId,
+                        'product_name' => $snapshot->name,
+                        'unit_price' => Money::fromCents($snapshot->priceCents),
+                        'quantity' => $quantity,
+                    ];
+                }
 
-            return $order->load('items');
-        });
+                $order = Order::create([
+                    'reference' => $reference,
+                    'user_id' => $userId,
+                    'status' => OrderStatus::Pending,
+                    'total' => Money::fromCents($totalCents),
+                ]);
+                $order->items()->createMany($rows);
 
-        // Dispatched only after the transaction has committed.
+                return $order->load('items');
+            });
+        } catch (Throwable $e) {
+            $this->releaseAfterFailure($reference, $stockItems);
+
+            throw $e;
+        }
+
+        // Dispatched only after the transaction has committed, and outside the try block:
+        // once the order is saved its reservation must never be released.
         OrderPlaced::dispatch($order->id, $order->user_id);
 
         return $order;
@@ -98,7 +120,10 @@ class OrderService
             }
 
             if ($to === OrderStatus::Cancelled) {
+                // Before the status changes. If release throws, the transaction rolls back and the status
+                // stays as it was. The row lock above is what stops two cancellations returning stock twice.
                 $this->inventory->release(
+                    $order->reference,
                     $order->items
                         ->sortBy('product_id')
                         ->map(fn (OrderItem $item) => new StockItem($item->product_id, $item->quantity))
@@ -117,6 +142,24 @@ class OrderService
         OrderStatusChanged::dispatch($order->id, $order->user_id, $from->value, $to->value);
 
         return $order;
+    }
+
+    /**
+     * Gives a reservation back after saving the order failed. A failure here is only logged,
+     * so it can never hide the original exception.
+     *
+     * @param  array<int, StockItem>  $stockItems
+     */
+    private function releaseAfterFailure(string $reference, array $stockItems): void
+    {
+        try {
+            $this->inventory->release($reference, $stockItems);
+        } catch (Throwable $releaseError) {
+            Log::error('Could not release reserved stock after the order failed to save.', [
+                'reference' => $reference,
+                'exception' => $releaseError,
+            ]);
+        }
     }
 
     /**
