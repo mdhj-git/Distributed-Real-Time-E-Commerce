@@ -51,7 +51,7 @@ function wrap(name, handler) {
       .then(() => handler(pool, call, done))
       .catch((err) => {
         logger.error(`${name} unhandled error`, { request_id: requestId, error: err.message });
-        done({ code: grpc.status.UNAVAILABLE, message: 'internal failure' });
+        done({ code: grpc.status.INTERNAL, message: 'internal failure' });
       });
   };
 }
@@ -93,12 +93,27 @@ async function main() {
     logger.info('inventory service listening', { port: boundPort });
   });
 
+  let shuttingDown = false;
+
   const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
     logger.info('shutting down');
+
+    const forceTimer = setTimeout(() => {
+      logger.error('graceful shutdown timed out, forcing');
+      server.forceShutdown();
+      pool.end().finally(() => process.exit(1));
+    }, 10000);
+
     server.tryShutdown((err) => {
+      clearTimeout(forceTimer);
       if (err) {
         logger.error('graceful shutdown failed, forcing', { error: err.message });
         server.forceShutdown();
+        pool.end().finally(() => process.exit(1));
+        return;
       }
       pool.end().finally(() => process.exit(0));
     });

@@ -3,34 +3,19 @@
 const grpc = require('@grpc/grpc-js');
 const { validateReference, validateItems } = require('../validate');
 const { grpcStatusForDbError } = require('../dbErrors');
+const { beginTx } = require('../db');
 
-async function reserveStock(pool, call, callback) {
-  const { reference, items } = call.request;
-
-  const referenceError = validateReference(reference);
-  if (referenceError) {
-    callback({ code: grpc.status.INVALID_ARGUMENT, message: referenceError });
-    return;
-  }
-
-  const itemsError = validateItems(items);
-  if (itemsError) {
-    callback({ code: grpc.status.INVALID_ARGUMENT, message: itemsError });
-    return;
-  }
-
+async function attemptReserve(pool, reference, items) {
   let conn;
   try {
     conn = await pool.getConnection();
   } catch (err) {
-    callback({ code: grpc.status.UNAVAILABLE, message: 'inventory database unavailable' });
-    return;
+    return { error: { code: grpc.status.UNAVAILABLE, message: 'inventory database unavailable' } };
   }
 
   try {
-    await conn.beginTransaction();
+    await beginTx(conn);
 
-    // أدرج أولاً (لا تقرأ ثم تُدرج) — يمنع Deadlock بين نداءين متزامنين بنفس المعرّف
     let isNewReservation = true;
     try {
       await conn.query(
@@ -43,22 +28,23 @@ async function reserveStock(pool, call, callback) {
     }
 
     if (!isNewReservation) {
-      const [rows] = await conn.query(
-        'SELECT status FROM reservations WHERE reference = ? FOR UPDATE',
-        [reference]
-      );
-      await conn.commit();
+      // أنهِ المعاملة فوراً لتحرير القفل — لا ترقية قفل، لا SELECT ... FOR UPDATE
+      await conn.rollback();
+      conn.release();
+      conn = null;
 
-      const status = rows.length ? rows[0].status : null;
+      const [rows] = await pool.query('SELECT status FROM reservations WHERE reference = ?', [reference]);
 
-      if (status === 'released') {
-        callback({ code: grpc.status.FAILED_PRECONDITION, message: 'reference already released' });
-        return;
+      if (!rows.length) {
+        // الصف غاب (المحاولة الأولى تراجعت بسبب نقص) — إشارة لإعادة المحاولة
+        return { retry: true };
       }
 
-      // status === 'reserved' — تكرار نداء آمن، لا نقارن العناصر بالمحاولة الأصلية
-      callback(null, { reserved: true, shortages: [] });
-      return;
+      if (rows[0].status === 'released') {
+        return { error: { code: grpc.status.FAILED_PRECONDITION, message: 'reference already released' } };
+      }
+
+      return { response: { reserved: true, shortages: [] } };
     }
 
     const sorted = [...items].sort((a, b) => Number(a.product_id) - Number(b.product_id));
@@ -85,8 +71,7 @@ async function reserveStock(pool, call, callback) {
 
     if (shortages.length) {
       await conn.rollback();
-      callback(null, { reserved: false, shortages });
-      return;
+      return { response: { reserved: false, shortages } };
     }
 
     for (const item of sorted) {
@@ -97,13 +82,46 @@ async function reserveStock(pool, call, callback) {
     }
 
     await conn.commit();
-    callback(null, { reserved: true, shortages: [] });
+    return { response: { reserved: true, shortages: [] } };
   } catch (err) {
-    await conn.rollback().catch(() => {});
-    callback(grpcStatusForDbError(err) || { code: grpc.status.INTERNAL, message: 'internal error' });
+    if (conn) await conn.rollback().catch(() => {});
+    return { error: grpcStatusForDbError(err) || { code: grpc.status.INTERNAL, message: 'internal error' } };
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
+}
+
+async function reserveStock(pool, call, callback) {
+  const { reference, items } = call.request;
+
+  const referenceError = validateReference(reference);
+  if (referenceError) {
+    callback({ code: grpc.status.INVALID_ARGUMENT, message: referenceError });
+    return;
+  }
+
+  const itemsError = validateItems(items);
+  if (itemsError) {
+    callback({ code: grpc.status.INVALID_ARGUMENT, message: itemsError });
+    return;
+  }
+
+  let result = await attemptReserve(pool, reference, items);
+
+  if (result.retry) {
+    result = await attemptReserve(pool, reference, items);
+    if (result.retry) {
+      callback({ code: grpc.status.INTERNAL, message: 'reservation state inconsistent after retry' });
+      return;
+    }
+  }
+
+  if (result.error) {
+    callback(result.error);
+    return;
+  }
+
+  callback(null, result.response);
 }
 
 module.exports = reserveStock;

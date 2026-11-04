@@ -3,6 +3,7 @@
 const grpc = require('@grpc/grpc-js');
 const { validateAdjust } = require('../validate');
 const { grpcStatusForDbError } = require('../dbErrors');
+const { beginTx } = require('../db');
 
 async function adjustStock(pool, call, callback) {
   const { product_id: productId, delta } = call.request;
@@ -22,7 +23,7 @@ async function adjustStock(pool, call, callback) {
   }
 
   try {
-    await conn.beginTransaction();
+    await beginTx(conn);
 
     if (delta > 0) {
       await conn.query(

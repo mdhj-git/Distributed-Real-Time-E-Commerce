@@ -65,4 +65,10 @@ async function ensureSchema() {
   }
 }
 
-module.exports = { pool, ensureSchema };
+async function beginTx(conn) {
+
+  await conn.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+  await conn.beginTransaction();
+}
+
+module.exports = { pool, ensureSchema, beginTx };
