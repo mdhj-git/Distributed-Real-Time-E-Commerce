@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package inventory.v1;
+
+option php_namespace          = "Modules\\Products\\Grpc\\Inventory\\V1";
+option php_metadata_namespace = "Modules\\Products\\Grpc\\GPBMetadata";
+
+service Inventory {
+  rpc GetStock    (GetStockRequest)     returns (GetStockResponse);
+  rpc ReserveStock(ReserveStockRequest) returns (ReserveStockResponse);
+  rpc ReleaseStock(ReleaseStockRequest) returns (ReleaseStockResponse);
+  rpc AdjustStock (AdjustStockRequest)  returns (AdjustStockResponse);
+}
+
+message StockLine {
+  int64 product_id = 1;
+  int32 quantity   = 2;
+}
+
+message GetStockRequest  { repeated int64     product_ids = 1; }
+message GetStockResponse { repeated StockLine items       = 1; }
+
+message ReserveStockRequest {
+  string             reference = 1;
+  repeated StockLine items     = 2;
+}
+message Shortage {
+  int64 product_id = 1;
+  int32 requested  = 2;
+  int32 available  = 3;
+}
+message ReserveStockResponse {
+  bool              reserved  = 1;
+  repeated Shortage shortages = 2;
+}
+
+message ReleaseStockRequest  { string reference = 1; }
+message ReleaseStockResponse { bool   released  = 1; }
+
+message AdjustStockRequest {
+  int64 product_id = 1;
+  int32 delta      = 2;
+}
+message AdjustStockResponse {
+  bool  applied  = 1;
+  int32 quantity = 2;
+}

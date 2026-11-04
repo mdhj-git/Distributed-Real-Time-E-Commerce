@@ -31,6 +31,7 @@ Modules/Orders/
 ### القواعد
 
 - لا تستورد وحدة نموذجاً أو `Service` من وحدة أخرى أبداً. المسموح هو ما في `Contracts/` فقط.
+- وحدة `Orders` لا تشير إلى أي صنف gRPC (لا `use ...Grpc...`). تعرف عقد `InventoryService` فقط.
 - أي وحدة يجوز لها استخدام ما في `Shared`. و`Shared` لا يستورد شيئاً من أي وحدة أخرى.
 - لا مفاتيح أجنبية ولا `JOIN` عبر حدود الوحدات. المفاتيح الأجنبية داخل الوحدة الواحدة مسموحة.
 - جدول `orders` يخزّن `user_id` رقماً فقط.
@@ -104,6 +105,7 @@ Modules/Orders/
 - `PostTooLargeException`: 413 `PAYLOAD_TOO_LARGE`.
 - `ThrottleRequestsException`: 429 `TOO_MANY_ATTEMPTS` مع ترويسة `Retry-After`.
 - مخزون غير كافٍ، أو تعديل يجعل المخزون سالباً: 409 `INSUFFICIENT_STOCK`.
+- خدمة المخزون غير متاحة أو انتهت مهلتها: 503 `INVENTORY_UNAVAILABLE`.
 - انتقال حالة غير صالح: 422 `INVALID_STATUS_TRANSITION`.
 - أي `HttpException` أخرى: رمزها الأصلي و`HTTP_ERROR`، والرسالة النص القياسي للرمز.
 - `SecretMissingException`: 500 `SERVER_ERROR`، لأنها خطأ إعداد لا خطأ مصادقة.
@@ -125,20 +127,36 @@ Modules/Orders/
 
 - السعر والإجمالي يُحسبان في الخادم من بيانات المنتج حصراً. العميل لا يرسلهما.
 - عناصر الطلب تُجمع كمياتها ثم تُرتَّب تصاعدياً حسب `product_id` قبل الحجز. السبب: منع الجمود.
-- حجز المخزون تحديث شرطي مع فحص عدد الصفوف المتأثرة:
+- حجز المخزون في التنفيذ المحلي (جدول `stock_levels`): تحديث شرطي مع فحص عدد الصفوف المتأثرة:
 
 ```sql
 UPDATE stock_levels SET stock = stock - ? WHERE product_id = ? AND stock >= ?
 ```
 
-- تعديل المخزون تحديث شرطي بالفرق:
+- تعديل المخزون في التنفيذ المحلي (جدول `stock_levels`): تحديث شرطي بالفرق:
 
 ```sql
 UPDATE stock_levels SET stock = stock + ? WHERE product_id = ? AND stock + ? >= 0
 ```
 
-- `InventoryService` يُستدعى داخل `Transaction` المستدعي، ويعتمد عليها للتراجع الكامل.
+- كل دالة في `InventoryService` ذرّية بذاتها، ولا تعتمد على `Transaction` المستدعي.
+- إنشاء الطلب: يولّد المستدعي `reference` (UUID) ثم يستدعي `reserve` خارج أي `Transaction`.
+- بعدها يحفظ الطلب وعناصره مع الـ `reference` داخل `Transaction`.
+- إن فشل الحفظ استُدعي `release(reference, items)` داخل `try/catch` خاص به.
+- يُسجَّل فشل `release` مع الـ `reference` ولا يُخفي الاستثناء الأصلي. ثم يُعاد رمي الاستثناء الأصلي.
+- لا تستدعِ `getStock` قبل `reserve`. السبب: الفحص ثم الفعل هو حالة التسابق نفسها. و`reserve` وحدها تقرّر.
+- التنفيذ البعيد (gRPC) لـ `InventoryService` يسجّل خطأ gRPC الحقيقي مع `request_id` قبل أن يرمي `InventoryUnavailableException`. السبب: `ApiException` مستثناة من الإبلاغ التلقائي (`dontReportWhen`)، فلا يبقى لها أثر في السجل بدونه.
+- الإلغاء: داخل الـ `Transaction` الحالية مع `lockForUpdate()`، تُفحص صلاحية الانتقال، ثم يُستدعى `release` قبل تغيير الحالة وحفظها.
 - تغيير حالة الطلب داخل `Transaction` مع `lockForUpdate()`. السبب: منع تحرير المخزون مرتين.
+- لا ترشيح للمنتجات ولا ترتيب حسب الكمية، ولا `JOIN` مع جداول المخزون. السبب: المخزون سيكون في قاعدة بيانات أخرى.
+- استجابة المنتج تحتوي حقل المخزون دائماً. وقد يكون `null` حين تكون خدمة المخزون غير متاحة.
+
+### حدود معروفة
+
+- انهيار التطبيق بين `reserve` وحفظ الطلب يترك حجزاً بلا طلب.
+- عند الإلغاء، إن نجح `release` ثم فشل الـ commit المحلي، يعود المخزون ويبقى الطلب فعّالاً. يحدث هذا مع التنفيذ البعيد فقط. السبب: التنفيذ المحلي يشارك اتصال قاعدة البيانات، فيتراجع `release` أيضاً مع التراجع.
+- تنفيذ المخزون المحلي ليس `idempotent`. والتنفيذ البعيد `idempotent` بالـ `reference`.
+- تُؤجَّل هذه الحدود إلى المتطلب 4 (الطوابير).
 
 ## 4. تحذيرات الانحدار
 
@@ -202,3 +220,13 @@ UPDATE stock_levels SET stock = stock + ? WHERE product_id = ? AND stock + ? >= 
 - لا يُضاف نطاق لم يُطلب.
 - لا تُكتب اختبارات في المراحل من 0أ إلى 4 إلا بقرار الفريق.
 - لا يُعدَّل كود وحدة يملكها زميل. أي خلل يُسجَّل تعليقاً أو Issue.
+
+## 11. التحقق من الدور
+
+- الدوران في `Modules\Users\Contracts\UserRole`: `Admin` و`Customer`. وتعرّف `UsersServiceProvider` البوابتين `admin` و`customer`.
+- مسار المسؤول: `->middleware(['auth:api', 'can:admin'])`. ومسار العميل: `->middleware(['auth:api', 'can:customer'])`.
+- `auth:api` يسبق `can:` دائماً. السبب: `can:` وحدها ترفض الزائر بـ 403 `FORBIDDEN` لا 401 `UNAUTHENTICATED`.
+- لا تعتمد على الحارس الافتراضي. اكتب `auth:api` في المسار و`auth('api')` في الكود. السبب: `defaults.guard` يقرأ `AUTH_GUARD` من البيئة.
+- لا تستورد `Modules\Users\Models\User` خارج الوحدة (القسم 1). استخدم البوابتين و`UserRole` من `Contracts` فقط.
+- الـ Seeder يضبط `role` داخل `updateOrCreate` رغم أنه خارج `$fillable`. وهذا يعمل عبر `db:seed` فقط، لأن الأمر يشغّل الـ Seeder داخل `Model::unguarded`. أي تشغيل آخر يتجاهل `role` بصمت فيبقى الحساب `customer`.
+- لتشغيل Seeder الـ Users وحده: `docker compose exec app php artisan db:seed --class='Modules\Users\Database\Seeders\UsersDatabaseSeeder'`.

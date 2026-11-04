@@ -60,6 +60,82 @@ docker compose exec app php artisan db:seed
 - `db:seed` لا يعمل تلقائياً، فشغّله حين يلزم.
 - لا تشغّل `php` ولا `composer` على جهازك مباشرة.
 
+## الصورة الأساسية لـ gRPC وتوليد الكود
+
+امتداد `grpc` يُترجم مرة واحدة (نحو 30 دقيقة) ويُنشر صورةً أساسية، فلا يترجمه أي عضو محلياً. ملف `docker/app/Dockerfile` يبدأ منها بسطر `FROM`.
+
+### بناء الصورة ونشرها
+
+- الوصفة في `docker/php-grpc/Dockerfile`.
+- الملف `.github/workflows/php-grpc-image.yml` يبنيها عند أي دفع يغيّر الوصفة أو الـ workflow نفسه، ويرفعها إلى `ghcr.io/mdhj-git/php-grpc:8.3-fpm-grpc1.85.0`.
+- الحارس: قبل البناء يفحص الـ workflow وجود الوسم في السجل. إن وُجد تخطّى البناء ولم يكتب فوقه، كما يحدث عند دمج الفرع في `main`. وإن تعذّر الجزم بوجوده فشلت المهمة بدل المخاطرة بالكتابة فوقه.
+- لإعادة بناء وسم موجود عمداً: شغّل الـ workflow يدوياً من تبويب Actions مع `force` = `true`.
+- يجب أن تكون الحزمة (package) عامة (public) كي يسحبها بقية الأعضاء.
+
+### تغيير إصدار gRPC
+
+عدّل هذه المواضع الأربعة معاً، واستخدم وسماً جديداً ولا تكتب فوق الوسم القديم:
+
+1. الوصفة: غيّر الإصدار في `RUN pecl install grpc-X.Y.Z` داخل `docker/php-grpc/Dockerfile`.
+2. الوسم: المتغير `IMAGE_TAG` في `.github/workflows/php-grpc-image.yml`.
+3. السطر `FROM` في `docker/app/Dockerfile`.
+4. قيد `grpc/grpc` في `composer.json`، ليبقى مطابقاً لإصدار الامتداد. الملف مجمّد، فيكون التغيير في PR مستقل.
+
+### توليد أصناف protobuf
+
+- تُولَّد أصناف الرسائل فقط من `proto/inventory/v1/inventory.proto`، ولا يُولَّد عميل (stub).
+- تُحفظ في `Modules/Products/Grpc/` وتُرفع إلى المستودع، فلا يحتاج أي عضو إلى `protoc`.
+- هذا المجلد مولَّد ومستثنى من Pint، فلا تضع فيه كوداً مكتوباً يدوياً.
+- الإصدارات: `protoc` 36.2 مع `google/protobuf` 5.36.x. يجب ألا يكون إصدار `protoc` أحدث من إصدار حزمة `google/protobuf`.
+- شغّل الأمر من جذر المشروع، وعند تغيير ملف `.proto` فقط. يعمل `protoc` داخل حاوية مؤقتة (`--rm`) ولا يُثبَّت في المشروع.
+
+Git Bash:
+
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD:/work" -w /work debian:bookworm-slim sh -c 'set -e; apt-get update -qq; apt-get install -y -qq --no-install-recommends curl ca-certificates unzip >/dev/null; curl -fsSL -o /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v36.2/protoc-36.2-linux-x86_64.zip; echo 121f6c7afe1d4d0e3ea6aab9432038599250134cbf4474cb1167d2c7decd4278 */tmp/protoc.zip | sha256sum -c -; unzip -q /tmp/protoc.zip -d /opt/protoc; /opt/protoc/bin/protoc -I proto --php_out=. proto/inventory/v1/inventory.proto'
+```
+
+PowerShell:
+
+```powershell
+docker run --rm -v "${PWD}:/work" -w /work debian:bookworm-slim sh -c 'set -e; apt-get update -qq; apt-get install -y -qq --no-install-recommends curl ca-certificates unzip >/dev/null; curl -fsSL -o /tmp/protoc.zip https://github.com/protocolbuffers/protobuf/releases/download/v36.2/protoc-36.2-linux-x86_64.zip; echo 121f6c7afe1d4d0e3ea6aab9432038599250134cbf4474cb1167d2c7decd4278 */tmp/protoc.zip | sha256sum -c -; unzip -q /tmp/protoc.zip -d /opt/protoc; /opt/protoc/bin/protoc -I proto --php_out=. proto/inventory/v1/inventory.proto'
+```
+
+### إعدادات gRPC في PHP-FPM
+
+- تُركت `grpc.enable_fork_support` و`grpc.poll_strategy` على قيمها الافتراضية.
+- اختيرت هذه القيم بقراءة كود الامتداد، لا بتجربة حية.
+- الـ PR 2 (العميل الفعلي) يجب أن يتضمن مكالمة gRPC حقيقية تحت PHP-FPM: طلبان متتاليان يخدمهما العامل (worker) نفسه، ثم اختبار مهلة (deadline).
+- إن ظهر أي سلوك غريب هناك فتُراجَع الإعدادان.
+
+### بعد دمج هذا الـ PR
+
+```bash
+git pull
+docker compose build --pull app
+docker compose up -d
+```
+
+لا حاجة لأي ترجمة محلية.
+
+## الحسابات التجريبية
+
+للتطوير فقط. الـ Seeder لا يفحص البيئة وكلمة المرور معروفة، فلا تشغّله في `production`.
+
+```bash
+docker compose exec app php artisan db:seed
+```
+
+كلمة المرور للحسابات الثلاثة: `password`.
+
+- `demo.admin@shop.test`: الدور `admin`.
+- `demo.customer.a@shop.test`: الدور `customer`.
+- `demo.customer.b@shop.test`: الدور `customer`.
+
+- تسجيل الدخول: `POST /api/v1/auth/login` بالحقلين `email` و`password`. الاستجابة فيها `data.user` و`data.token`.
+- حد المحاولات: 5 في الدقيقة لكل بريد وعنوان IP، والسادسة تعيد 429.
+- قواعد التحقق من الدور في القسم 11 من [`docs/PROJECT_RULES.md`](docs/PROJECT_RULES.md).
+
 ## بنية الوحدات
 
 الوحدات تحت `Modules/`: `Shared` و`Users` و`Products` و`Orders` و`Notifications`.

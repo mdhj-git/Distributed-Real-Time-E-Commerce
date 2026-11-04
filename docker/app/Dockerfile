@@ -1,4 +1,4 @@
-FROM php:8.3-fpm
+FROM ghcr.io/mdhj-git/php-grpc:8.3-fpm-grpc1.85.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libzip-dev \
