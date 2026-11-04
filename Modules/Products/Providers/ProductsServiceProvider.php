@@ -7,7 +7,7 @@ use Modules\Products\Contracts\InventoryService;
 use Modules\Products\Contracts\ProductCatalog;
 use Modules\Products\Models\Product;
 use Modules\Products\Policies\ProductPolicy;
-use Modules\Products\Services\LocalInventoryService;
+use Modules\Products\Services\GrpcInventoryService;
 use Modules\Products\Services\ProductCatalogService;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -42,7 +42,7 @@ class ProductsServiceProvider extends ModuleServiceProvider
         parent::register();
 
         $this->app->bind(ProductCatalog::class, ProductCatalogService::class);
-        $this->app->bind(InventoryService::class, LocalInventoryService::class);
+        $this->app->bind(InventoryService::class, GrpcInventoryService::class);
     }
 
     public function boot(): void
