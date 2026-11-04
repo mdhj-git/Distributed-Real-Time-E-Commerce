@@ -1,0 +1,167 @@
+{
+    "info": {
+      "name": "Requirement 2 — Inventory (gRPC)",
+      "description": "تغطي خطوات §12 التي تُطلب عبر HTTP: 3 (عرض المنتج مع stock)، 4 (ضبط الكمية)، 6 (503 عند توقف الخدمة)، 7 (stock: null عند التوقف)، 10 (إلغاء طلب مرتين).",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+      { "key": "base_url", "value": "{{base_url}}" },
+      { "key": "admin_token", "value": "{{admin_token}}" },
+      { "key": "customer_token", "value": "{{customer_token}}" },
+      { "key": "product_id", "value": "1" },
+      { "key": "order_id", "value": "" }
+    ],
+    "item": [
+      {
+        "name": "3 — GET product shows stock from service",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{base_url}}/api/v1/products/{{product_id}}",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "products", "{{product_id}}"]
+          }
+        }
+      },
+      {
+        "name": "4 — Admin sets stock to 1",
+        "request": {
+          "method": "PATCH",
+          "header": [
+            { "key": "Authorization", "value": "Bearer {{admin_token}}" },
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"adjustment\": 1\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/api/v1/products/{{product_id}}/stock",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "products", "{{product_id}}", "stock"]
+          }
+        }
+      },
+      {
+        "name": "6 — Create order while inventory service is stopped (expect 503)",
+        "request": {
+          "method": "POST",
+          "header": [
+            { "key": "Authorization", "value": "Bearer {{customer_token}}" },
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"items\": [\n    { \"product_id\": {{product_id}}, \"quantity\": 1 }\n  ]\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/api/v1/orders",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "orders"]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Returns 503 INVENTORY_UNAVAILABLE', function () {",
+                "    pm.response.to.have.status(503);",
+                "    pm.expect(pm.response.json().error.code).to.eql('INVENTORY_UNAVAILABLE');",
+                "});"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "7 — GET product while inventory service is stopped (expect stock: null)",
+        "request": {
+          "method": "GET",
+          "header": [],
+          "url": {
+            "raw": "{{base_url}}/api/v1/products/{{product_id}}",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "products", "{{product_id}}"]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Returns 200 with stock: null', function () {",
+                "    pm.response.to.have.status(200);",
+                "    pm.expect(pm.response.json().data.stock).to.be.null;",
+                "});"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "10a — Cancel order (first time, expect 200)",
+        "request": {
+          "method": "PATCH",
+          "header": [
+            { "key": "Authorization", "value": "Bearer {{admin_token}}" },
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"status\": \"cancelled\"\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/api/v1/orders/{{order_id}}/status",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "orders", "{{order_id}}", "status"]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('First cancel returns 200', function () {",
+                "    pm.response.to.have.status(200);",
+                "});"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "10b — Cancel order again (second time, expect 422)",
+        "request": {
+          "method": "PATCH",
+          "header": [
+            { "key": "Authorization", "value": "Bearer {{admin_token}}" },
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"status\": \"cancelled\"\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/api/v1/orders/{{order_id}}/status",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "orders", "{{order_id}}", "status"]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Second cancel returns 422 INVALID_STATUS_TRANSITION', function () {",
+                "    pm.response.to.have.status(422);",
+                "    pm.expect(pm.response.json().error.code).to.eql('INVALID_STATUS_TRANSITION');",
+                "});"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }

@@ -179,6 +179,11 @@ docker compose exec app php artisan db:seed
 - يُجرَّب فرع صاحبه على Docker عند عضو آخر قبل دمجه.
 - لا يصلح للمتطلب الثاني، الذي يحتاج Docker.
 
+## سيناريو عرض المتطلب الثاني
+
+راجع [docs/r2-demo-scenario.md](docs/r2-demo-scenario.md) لخطوات العرض الكاملة أمام الأستاذ.
+
+
 الخطوات:
 
 1. **PHP 8.3.x:** تحقق بـ `php -v` من PHP الذي سيُستخدم فعلاً. إن كان PHP داخل XAMPP أقدم، فثبّت PHP 8.3 منفصلاً وشغّل التطبيق بـ `php artisan serve`، مع الإبقاء على MySQL الخاص بـ XAMPP.
