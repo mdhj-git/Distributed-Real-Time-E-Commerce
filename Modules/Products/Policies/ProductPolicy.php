@@ -41,6 +41,11 @@ class ProductPolicy
         return $this->isAdmin($user);
     }
 
+    public function adjustStock(Authenticatable $user, Product $product): bool
+    {
+        return $this->isAdmin($user);
+    }
+
     private function isAdmin(Authenticatable $user): bool
     {
         return $user->role === UserRole::Admin;

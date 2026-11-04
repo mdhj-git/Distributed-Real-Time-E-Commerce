@@ -11,10 +11,12 @@ Route::get('categories', [CategoryController::class, 'index'])->name('categories
 Route::get('products', [ProductController::class, 'index'])->name('products.index');
 Route::get('products/{product}', [ProductController::class, 'show'])->name('products.show');
 
-Route::middleware('auth:api')->group(function () {
+Route::middleware(['auth:api', 'can:admin'])->group(function () {
     Route::post('products', [ProductController::class, 'store'])->name('products.store');
     Route::patch('products/{product}', [ProductController::class, 'update'])->name('products.update');
     Route::delete('products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
 
     Route::post('products/{product}/images', [ProductController::class, 'storeImages'])->name('products.images.store');
+
+    Route::patch('products/{product}/stock', [ProductController::class, 'adjustStock'])->name('products.stock.adjust');
 });

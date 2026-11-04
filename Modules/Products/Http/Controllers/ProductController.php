@@ -6,6 +6,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
+use Modules\Products\Http\Requests\AdjustStockRequest;
 use Modules\Products\Http\Requests\ListProductsRequest;
 use Modules\Products\Http\Requests\StoreProductRequest;
 use Modules\Products\Http\Requests\UpdateProductRequest;
@@ -62,6 +63,18 @@ class ProductController extends Controller
 
         return ApiResponse::ok(
             new ProductResource($this->products->update($product, $request->validated())),
+        );
+    }
+
+    // PATCH /api/v1/products/{product}/stock
+    public function adjustStock(AdjustStockRequest $request, Product $product): JsonResponse
+    {
+        $this->authorize('adjustStock', $product);
+
+        return ApiResponse::ok(
+            new ProductResource(
+                $this->products->adjustStock($product, (int) $request->validated('adjustment')),
+            ),
         );
     }
 
