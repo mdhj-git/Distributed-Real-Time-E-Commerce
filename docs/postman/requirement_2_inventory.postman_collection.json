@@ -1,17 +1,72 @@
 {
     "info": {
       "name": "Requirement 2 — Inventory (gRPC)",
-      "description": "تغطي خطوات §12 التي تُطلب عبر HTTP: 3 (عرض المنتج مع stock)، 4 (ضبط الكمية)، 6 (503 عند توقف الخدمة)، 7 (stock: null عند التوقف)، 10 (إلغاء طلب مرتين).",
+      "description": "تغطي خطوات §12 التي تُطلب عبر HTTP: 3 (عرض المنتج مع stock)، 4 (ضبط الكمية)، 6 (503 عند توقف الخدمة — تُنفَّذ يدوياً)، 7 (stock: null عند التوقف — تُنفَّذ يدوياً)، 10 (إلغاء طلب مرتين). تبدأ بتسجيل دخول المسؤول والعميل لأن التوكنات لا تُخزَّن في ملف البيئة.",
       "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "variable": [
-      { "key": "base_url", "value": "{{base_url}}" },
-      { "key": "admin_token", "value": "{{admin_token}}" },
-      { "key": "customer_token", "value": "{{customer_token}}" },
       { "key": "product_id", "value": "1" },
       { "key": "order_id", "value": "" }
     ],
     "item": [
+      {
+        "name": "0a — Login as admin",
+        "request": {
+          "method": "POST",
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/api/v1/auth/login",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "auth", "login"]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Admin login succeeds', function () {",
+                "    pm.response.to.have.status(200);",
+                "    pm.collectionVariables.set('admin_token', pm.response.json().data.token);",
+                "});"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "0b — Login as customer",
+        "request": {
+          "method": "POST",
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"email\": \"{{customer_email}}\",\n  \"password\": \"{{customer_password}}\"\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/api/v1/auth/login",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "auth", "login"]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Customer login succeeds', function () {",
+                "    pm.response.to.have.status(200);",
+                "    pm.collectionVariables.set('customer_token', pm.response.json().data.token);",
+                "});"
+              ]
+            }
+          }
+        ]
+      },
       {
         "name": "3 — GET product shows stock from service",
         "request": {
@@ -34,17 +89,81 @@
           ],
           "body": {
             "mode": "raw",
-            "raw": "{\n  \"adjustment\": 1\n}"
+            "raw": "{\n  \"adjustment\": 0\n}"
           },
           "url": {
             "raw": "{{base_url}}/api/v1/products/{{product_id}}/stock",
             "host": ["{{base_url}}"],
             "path": ["api", "v1", "products", "{{product_id}}", "stock"]
           }
-        }
+        },
+        "event": [
+          {
+            "listen": "prerequest",
+            "script": {
+              "exec": [
+                "pm.sendRequest({",
+                "    url: pm.collectionVariables.get('base_url') + '/api/v1/products/' + pm.collectionVariables.get('product_id'),",
+                "    method: 'GET'",
+                "}, function (err, response) {",
+                "    if (!err && response.code === 200) {",
+                "        const current = response.json().data.stock;",
+                "        const body = JSON.parse(pm.request.body.raw);",
+                "        body.adjustment = 1 - current;",
+                "        pm.request.body.update(JSON.stringify(body));",
+                "    }",
+                "});"
+              ]
+            }
+          },
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Stock becomes 1', function () {",
+                "    pm.response.to.have.status(200);",
+                "    pm.expect(pm.response.json().data.stock).to.eql(1);",
+                "});"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "9c — Create order (setup for step 10)",
+        "request": {
+          "method": "POST",
+          "header": [
+            { "key": "Authorization", "value": "Bearer {{customer_token}}" },
+            { "key": "Content-Type", "value": "application/json" }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"items\": [\n    { \"product_id\": {{product_id}}, \"quantity\": 1 }\n  ]\n}"
+          },
+          "url": {
+            "raw": "{{base_url}}/api/v1/orders",
+            "host": ["{{base_url}}"],
+            "path": ["api", "v1", "orders"]
+          }
+        },
+        "event": [
+          {
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Order created', function () {",
+                "    pm.response.to.have.status(201);",
+                "    pm.collectionVariables.set('order_id', pm.response.json().data.id);",
+                "});"
+              ]
+            }
+          }
+        ]
       },
       {
         "name": "6 — Create order while inventory service is stopped (expect 503)",
+        "description": "تُنفَّذ يدوياً فقط، بعد docker compose stop inventory. تفشل تلقائياً في Collection Runner إن كانت الخدمة تعمل، لأنها تعتمد على توقف فعلي للخدمة.",
         "request": {
           "method": "POST",
           "header": [
@@ -77,6 +196,7 @@
       },
       {
         "name": "7 — GET product while inventory service is stopped (expect stock: null)",
+        "description": "تُنفَّذ يدوياً فقط، بعد docker compose stop inventory. تفشل تلقائياً في Collection Runner إن كانت الخدمة تعمل.",
         "request": {
           "method": "GET",
           "header": [],

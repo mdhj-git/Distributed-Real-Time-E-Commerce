@@ -27,6 +27,7 @@ class OrdersRaceTestCommandTest extends TestCase
         ]);
 
         $this->artisan('orders:race-test', ['--product' => 1, '--count' => 3])
+            ->expectsOutputToContain('Result: PASS')
             ->assertExitCode(0);
     }
 
@@ -45,6 +46,7 @@ class OrdersRaceTestCommandTest extends TestCase
         ]);
 
         $this->artisan('orders:race-test', ['--product' => 1, '--count' => 2])
+            ->expectsOutputToContain('Result: FAIL')
             ->assertExitCode(1);
     }
 

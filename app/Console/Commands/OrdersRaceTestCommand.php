@@ -31,7 +31,7 @@ class OrdersRaceTestCommand extends Command
     {
         $productId = $this->option('product');
 
-        if (! $productId || ! ctype_digit((string) $productId)) {
+        if (! $productId || ! ctype_digit((string) $productId) || (int) $productId < 1) {
             $this->error('The --product option is required and must be a positive integer.');
 
             return self::FAILURE;
