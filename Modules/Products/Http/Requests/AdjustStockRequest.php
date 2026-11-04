@@ -15,7 +15,6 @@ class AdjustStockRequest extends FormRequest
     {
         // JSON only: adjustment is a signed integer, never a multipart field.
         return [
-            'adjustment' => ['required', 'integer', 'not_in:0'],
-        ];
+            'adjustment' => ['required', 'integer', 'not_in:0', 'between:-1000000,1000000'],        ];
     }
 }
