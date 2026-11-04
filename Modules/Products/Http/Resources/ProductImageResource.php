@@ -13,7 +13,7 @@ class ProductImageResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'url' => url(Storage::disk(ProductImage::DISK)->url($this->path)),
+            'url' => url(Storage::disk(ProductImage::disk())->url($this->path)),
             'position' => $this->position,
         ];
     }
