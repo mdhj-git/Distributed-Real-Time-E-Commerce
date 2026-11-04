@@ -1,12 +1,20 @@
 'use strict';
 
 const grpc = require('@grpc/grpc-js');
+const { validateProductIds } = require('../validate');
+const { grpcStatusForDbError } = require('../dbErrors');
 
-async function getStock(pool, call, callback, logger, requestId) {
-  const productIds = call.request.product_ids || [];
+async function getStock(pool, call, callback) {
+  const productIds = (call.request.product_ids || []).map(Number);
 
   if (!productIds.length) {
-    callback({ code: grpc.status.INVALID_ARGUMENT, message: 'product_ids must not be empty' });
+    callback(null, { items: [] });
+    return;
+  }
+
+  const validationError = validateProductIds(productIds);
+  if (validationError) {
+    callback({ code: grpc.status.INVALID_ARGUMENT, message: validationError });
     return;
   }
 
@@ -24,11 +32,9 @@ async function getStock(pool, call, callback, logger, requestId) {
       quantity: found.has(String(id)) ? found.get(String(id)) : 0,
     }));
 
-    logger.info('GetStock', { requestId, count: productIds.length });
     callback(null, { items });
   } catch (err) {
-    logger.error('GetStock failed', { requestId, error: err.message });
-    callback({ code: grpc.status.INTERNAL, message: 'internal error' });
+    callback(grpcStatusForDbError(err) || { code: grpc.status.INTERNAL, message: 'internal error' });
   }
 }
 

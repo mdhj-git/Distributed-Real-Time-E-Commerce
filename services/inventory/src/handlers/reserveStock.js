@@ -1,64 +1,67 @@
 'use strict';
 
 const grpc = require('@grpc/grpc-js');
+const { validateReference, validateItems } = require('../validate');
+const { grpcStatusForDbError } = require('../dbErrors');
 
-async function reserveStock(pool, call, callback, logger, requestId) {
+async function reserveStock(pool, call, callback) {
   const { reference, items } = call.request;
 
-  if (!reference || !items || !items.length) {
-    callback({ code: grpc.status.INVALID_ARGUMENT, message: 'reference and items are required' });
+  const referenceError = validateReference(reference);
+  if (referenceError) {
+    callback({ code: grpc.status.INVALID_ARGUMENT, message: referenceError });
     return;
   }
 
-  for (const item of items) {
-    if (!item.quantity || item.quantity <= 0) {
-      callback({ code: grpc.status.INVALID_ARGUMENT, message: 'quantity must be positive' });
-      return;
-    }
+  const itemsError = validateItems(items);
+  if (itemsError) {
+    callback({ code: grpc.status.INVALID_ARGUMENT, message: itemsError });
+    return;
   }
 
-  const conn = await pool.getConnection();
+  let conn;
+  try {
+    conn = await pool.getConnection();
+  } catch (err) {
+    callback({ code: grpc.status.UNAVAILABLE, message: 'inventory database unavailable' });
+    return;
+  }
+
   try {
     await conn.beginTransaction();
 
-    // 1) تكرار النداء الآمن: الحجز موجود مسبقاً بهذا المعرّف
-    const [existingRows] = await conn.query(
-      'SELECT status FROM reservations WHERE reference = ? FOR UPDATE',
-      [reference]
-    );
-
-    if (existingRows.length) {
-      await conn.commit();
-      const reserved = existingRows[0].status === 'reserved';
-      logger.info('ReserveStock idempotent replay', { requestId, reference, reserved });
-      callback(null, { reserved, shortages: [] });
-      return;
-    }
-
-    // 2) حجز السجل فوراً (يمنع نداء متزامن بنفس المعرّف من الدخول)
+    // أدرج أولاً (لا تقرأ ثم تُدرج) — يمنع Deadlock بين نداءين متزامنين بنفس المعرّف
+    let isNewReservation = true;
     try {
       await conn.query(
         "INSERT INTO reservations (reference, status) VALUES (?, 'reserved')",
         [reference]
       );
     } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY') {
-        // سباق نادر: نداء آخر بنفس المعرّف سبقنا بين القراءة والإدراج
-        await conn.rollback();
-        const [rows2] = await pool.query(
-          'SELECT status FROM reservations WHERE reference = ?',
-          [reference]
-        );
-        const reserved = rows2.length && rows2[0].status === 'reserved';
-        callback(null, { reserved, shortages: [] });
-        return;
-      }
-      throw err;
+      if (err.code !== 'ER_DUP_ENTRY') throw err;
+      isNewReservation = false;
     }
 
-    // 3) ترتيب العناصر تصاعدياً حسب product_id — يمنع الجمود
-    const sorted = [...items].sort((a, b) => Number(a.product_id) - Number(b.product_id));
+    if (!isNewReservation) {
+      const [rows] = await conn.query(
+        'SELECT status FROM reservations WHERE reference = ? FOR UPDATE',
+        [reference]
+      );
+      await conn.commit();
 
+      const status = rows.length ? rows[0].status : null;
+
+      if (status === 'released') {
+        callback({ code: grpc.status.FAILED_PRECONDITION, message: 'reference already released' });
+        return;
+      }
+
+      // status === 'reserved' — تكرار نداء آمن، لا نقارن العناصر بالمحاولة الأصلية
+      callback(null, { reserved: true, shortages: [] });
+      return;
+    }
+
+    const sorted = [...items].sort((a, b) => Number(a.product_id) - Number(b.product_id));
     const shortages = [];
 
     for (const item of sorted) {
@@ -72,25 +75,20 @@ async function reserveStock(pool, call, callback, logger, requestId) {
           'SELECT quantity FROM stock WHERE product_id = ?',
           [item.product_id]
         );
-        const available = availRows.length ? availRows[0].quantity : 0;
-
         shortages.push({
           product_id: item.product_id,
           requested: item.quantity,
-          available,
+          available: availRows.length ? availRows[0].quantity : 0,
         });
       }
     }
 
     if (shortages.length) {
-      // تراجع كامل — لا حجز جزئي
       await conn.rollback();
-      logger.info('ReserveStock rejected', { requestId, reference, shortages });
       callback(null, { reserved: false, shortages });
       return;
     }
 
-    // 4) حفظ تفاصيل الحجز للإرجاع لاحقاً
     for (const item of sorted) {
       await conn.query(
         'INSERT INTO reservation_items (reference, product_id, quantity) VALUES (?, ?, ?)',
@@ -99,12 +97,10 @@ async function reserveStock(pool, call, callback, logger, requestId) {
     }
 
     await conn.commit();
-    logger.info('ReserveStock succeeded', { requestId, reference, items: sorted.length });
     callback(null, { reserved: true, shortages: [] });
   } catch (err) {
     await conn.rollback().catch(() => {});
-    logger.error('ReserveStock failed', { requestId, reference, error: err.message });
-    callback({ code: grpc.status.INTERNAL, message: 'internal error' });
+    callback(grpcStatusForDbError(err) || { code: grpc.status.INTERNAL, message: 'internal error' });
   } finally {
     conn.release();
   }

@@ -29,10 +29,30 @@ function requestIdFrom(call) {
   return meta.length ? meta[0] : null;
 }
 
-function wrap(handler) {
+function wrap(name, handler) {
   return (call, callback) => {
     const requestId = requestIdFrom(call);
-    handler(pool, call, callback, logger, requestId);
+    const startedAt = process.hrtime.bigint();
+
+    const done = (err, response) => {
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+      const status = err ? (err.code !== undefined ? err.code : grpc.status.INTERNAL) : grpc.status.OK;
+
+      logger.info(name, {
+        request_id: requestId,
+        status,
+        duration_ms: Math.round(durationMs * 100) / 100,
+      });
+
+      callback(err, response);
+    };
+
+    Promise.resolve()
+      .then(() => handler(pool, call, done))
+      .catch((err) => {
+        logger.error(`${name} unhandled error`, { request_id: requestId, error: err.message });
+        done({ code: grpc.status.UNAVAILABLE, message: 'internal failure' });
+      });
   };
 }
 
@@ -40,6 +60,7 @@ async function waitForDatabase(retries = 20, delayMs = 2000) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       await ensureSchema();
+      logger.info('schema ready');
       return;
     } catch (err) {
       logger.warn('database not ready, retrying', { attempt, error: err.message });
@@ -55,13 +76,13 @@ async function main() {
   const server = new grpc.Server();
 
   server.addService(inventoryProto.Inventory.service, {
-    GetStock: wrap(getStock),
-    ReserveStock: wrap(reserveStock),
-    ReleaseStock: wrap(releaseStock),
-    AdjustStock: wrap(adjustStock),
+    GetStock: wrap('GetStock', getStock),
+    ReserveStock: wrap('ReserveStock', reserveStock),
+    ReleaseStock: wrap('ReleaseStock', releaseStock),
+    AdjustStock: wrap('AdjustStock', adjustStock),
   });
 
-  const port = process.env.GRPC_PORT || '50051';
+  const port = process.env.INVENTORY_GRPC_PORT || '50051';
   const bindAddress = `0.0.0.0:${port}`;
 
   server.bindAsync(bindAddress, grpc.ServerCredentials.createInsecure(), (err, boundPort) => {
@@ -85,6 +106,11 @@ async function main() {
 
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+  process.on('unhandledRejection', (reason) => {
+    logger.error('unhandled rejection', {
+      error: reason instanceof Error ? reason.message : String(reason),
+    });
+  });
 }
 
 main().catch((err) => {

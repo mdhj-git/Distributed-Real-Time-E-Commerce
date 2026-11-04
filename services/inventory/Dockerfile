@@ -1,12 +1,14 @@
-FROM node:20-alpine
+FROM node:22.11-alpine
 
 WORKDIR /app
 
-COPY services/inventory/package.json ./
-RUN npm install --omit=dev
+COPY --chown=node:node services/inventory/package.json services/inventory/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts
 
-COPY services/inventory/src ./src
-COPY proto ./proto
+COPY --chown=node:node services/inventory/src ./src
+COPY --chown=node:node proto ./proto
+
+USER node
 
 EXPOSE 50051
 

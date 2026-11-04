@@ -52,16 +52,23 @@ services:
     build:
       context: .
       dockerfile: services/inventory/Dockerfile
+    restart: unless-stopped
     environment:
       INVENTORY_DB_HOST: inventory-db
       INVENTORY_DB_PORT: 3306
       INVENTORY_DB_NAME: ${INVENTORY_DB_NAME}
       INVENTORY_DB_USER: ${INVENTORY_DB_USER}
       INVENTORY_DB_PASS: ${INVENTORY_DB_PASS}
-      GRPC_PORT: 50051
+      INVENTORY_GRPC_PORT: 50051
     depends_on:
       inventory-db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   inventory-db:
     image: mysql:8.4
@@ -79,7 +86,7 @@ services:
       start_period: 30s
 
   grpcurl:
-    image: fullstorydev/grpcurl:latest
+    image: fullstorydev/grpcurl:v1.9.3
     volumes:
       - ./proto:/proto:ro
     profiles: ["tools"]
