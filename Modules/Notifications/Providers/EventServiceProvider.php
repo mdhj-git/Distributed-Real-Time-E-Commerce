@@ -3,22 +3,28 @@
 namespace Modules\Notifications\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+use Modules\Notifications\Listeners\NotifyOrderPlaced;
+use Modules\Notifications\Listeners\NotifyOrderStatusChanged;
+use Modules\Orders\Contracts\Events\OrderPlaced;
+use Modules\Orders\Contracts\Events\OrderStatusChanged;
 
 class EventServiceProvider extends ServiceProvider
 {
     /**
-     * The event handler mappings for the application.
+     * Only events from Orders' Contracts are listened to, never anything else from that module.
      *
      * @var array<string, array<int, string>>
      */
-    protected $listen = [];
+    protected $listen = [
+        OrderPlaced::class => [NotifyOrderPlaced::class],
+        OrderStatusChanged::class => [NotifyOrderStatusChanged::class],
+    ];
 
     /**
-     * Indicates if events should be discovered.
-     *
-     * @var bool
+     * Listeners are registered explicitly above, never by discovery. (Laravel only runs discovery for its own
+     * base provider, so this is a safety setting: it guarantees a listener can never be registered twice.)
      */
-    protected static $shouldDiscoverEvents = true;
+    protected static $shouldDiscoverEvents = false;
 
     /**
      * Configure the proper event listeners for email verification.

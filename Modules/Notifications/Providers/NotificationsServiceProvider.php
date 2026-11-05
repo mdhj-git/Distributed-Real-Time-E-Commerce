@@ -2,8 +2,10 @@
 
 namespace Modules\Notifications\Providers;
 
+use Illuminate\Support\Facades\Gate;
+use Modules\Notifications\Models\UserNotification;
+use Modules\Notifications\Policies\UserNotificationPolicy;
 use Nwidart\Modules\Support\ModuleServiceProvider;
-use Illuminate\Console\Scheduling\Schedule;
 
 class NotificationsServiceProvider extends ModuleServiceProvider
 {
@@ -18,13 +20,6 @@ class NotificationsServiceProvider extends ModuleServiceProvider
     protected string $nameLower = 'notifications';
 
     /**
-     * Command classes to register.
-     *
-     * @var string[]
-     */
-    // protected array $commands = [];
-
-    /**
      * Provider classes to register.
      *
      * @var string[]
@@ -34,13 +29,10 @@ class NotificationsServiceProvider extends ModuleServiceProvider
         RouteServiceProvider::class,
     ];
 
-    /**
-     * Define module schedules.
-     * 
-     * @param $schedule
-     */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    public function boot(): void
+    {
+        parent::boot();
+
+        Gate::policy(UserNotification::class, UserNotificationPolicy::class);
+    }
 }
