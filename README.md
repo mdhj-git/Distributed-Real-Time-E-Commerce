@@ -227,3 +227,7 @@ docker compose exec app php artisan migrate
 6. **المفاتيح والروابط:** `php artisan key:generate` و`php artisan jwt:secret` و`php artisan storage:link`. وعلى Windows قد يتطلب `storage:link` تشغيل الطرفية بصلاحيات المسؤول.
 7. **القاعدة الملزمة:** الكود لا يخاطب Redis مباشرة بل عبر واجهات Laravel فقط، وإلا فقد هذا المسار صلاحيته.
 8. **حدود هذه الطريقة:** لن يظهر عندها أي خطأ يخص Redis أو MySQL 8.4 تحديداً.
+
+## سيناريو عرض المتطلب الثاني
+
+راجع [docs/r2-demo-scenario.md](docs/r2-demo-scenario.md) لخطوات العرض الكاملة أمام الأستاذ.
