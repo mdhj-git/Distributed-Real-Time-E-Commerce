@@ -52,6 +52,6 @@ class SharedServiceProvider extends ModuleServiceProvider
         parent::boot();
 
         // Keyed by IP only, so a throttled route never depends on the JWT guard or its secret.
-        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(60)->by($request->ip()));
+        RateLimiter::for('api', fn (Request $request) => Limit::perMinute((int) config('ratelimit.api_per_minute', 60))->by($request->ip()));
     }
 }

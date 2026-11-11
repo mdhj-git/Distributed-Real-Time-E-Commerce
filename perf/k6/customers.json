@@ -1,0 +1,317 @@
+{
+    "seed": 42,
+    "password": "password",
+    "admin_email": "demo.admin@shop.test",
+    "customers_total": 2000,
+    "products": {
+        "first_id": 3,
+        "last_id": 5002
+    },
+    "orders": {
+        "first_id": 1,
+        "last_id": 300000,
+        "total": 300000
+    },
+    "k6_customers": [
+        {
+            "id": 4,
+            "email": "perf.customer.1@shop.test",
+            "orders": 16478,
+            "kind": "heavy"
+        },
+        {
+            "id": 5,
+            "email": "perf.customer.2@shop.test",
+            "orders": 9277,
+            "kind": "heavy"
+        },
+        {
+            "id": 6,
+            "email": "perf.customer.3@shop.test",
+            "orders": 6745,
+            "kind": "heavy"
+        },
+        {
+            "id": 7,
+            "email": "perf.customer.4@shop.test",
+            "orders": 5315,
+            "kind": "heavy"
+        },
+        {
+            "id": 8,
+            "email": "perf.customer.5@shop.test",
+            "orders": 4485,
+            "kind": "heavy"
+        },
+        {
+            "id": 9,
+            "email": "perf.customer.6@shop.test",
+            "orders": 3852,
+            "kind": "heavy"
+        },
+        {
+            "id": 10,
+            "email": "perf.customer.7@shop.test",
+            "orders": 3482,
+            "kind": "heavy"
+        },
+        {
+            "id": 11,
+            "email": "perf.customer.8@shop.test",
+            "orders": 3010,
+            "kind": "heavy"
+        },
+        {
+            "id": 12,
+            "email": "perf.customer.9@shop.test",
+            "orders": 2795,
+            "kind": "heavy"
+        },
+        {
+            "id": 13,
+            "email": "perf.customer.10@shop.test",
+            "orders": 2656,
+            "kind": "heavy"
+        },
+        {
+            "id": 1123,
+            "email": "perf.customer.1120@shop.test",
+            "orders": 66,
+            "kind": "mid"
+        },
+        {
+            "id": 1147,
+            "email": "perf.customer.1144@shop.test",
+            "orders": 66,
+            "kind": "mid"
+        },
+        {
+            "id": 1155,
+            "email": "perf.customer.1152@shop.test",
+            "orders": 66,
+            "kind": "mid"
+        },
+        {
+            "id": 1162,
+            "email": "perf.customer.1159@shop.test",
+            "orders": 66,
+            "kind": "mid"
+        },
+        {
+            "id": 1188,
+            "email": "perf.customer.1185@shop.test",
+            "orders": 66,
+            "kind": "mid"
+        },
+        {
+            "id": 1191,
+            "email": "perf.customer.1188@shop.test",
+            "orders": 66,
+            "kind": "mid"
+        },
+        {
+            "id": 1208,
+            "email": "perf.customer.1205@shop.test",
+            "orders": 66,
+            "kind": "mid"
+        },
+        {
+            "id": 651,
+            "email": "perf.customer.648@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 801,
+            "email": "perf.customer.798@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 870,
+            "email": "perf.customer.867@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 881,
+            "email": "perf.customer.878@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 897,
+            "email": "perf.customer.894@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 904,
+            "email": "perf.customer.901@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 978,
+            "email": "perf.customer.975@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 1021,
+            "email": "perf.customer.1018@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 1022,
+            "email": "perf.customer.1019@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 1029,
+            "email": "perf.customer.1026@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 1038,
+            "email": "perf.customer.1035@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 1067,
+            "email": "perf.customer.1064@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 1071,
+            "email": "perf.customer.1068@shop.test",
+            "orders": 65,
+            "kind": "mid"
+        },
+        {
+            "id": 1995,
+            "email": "perf.customer.1992@shop.test",
+            "orders": 31,
+            "kind": "light"
+        },
+        {
+            "id": 1397,
+            "email": "perf.customer.1394@shop.test",
+            "orders": 30,
+            "kind": "light"
+        },
+        {
+            "id": 1687,
+            "email": "perf.customer.1684@shop.test",
+            "orders": 30,
+            "kind": "light"
+        },
+        {
+            "id": 1808,
+            "email": "perf.customer.1805@shop.test",
+            "orders": 30,
+            "kind": "light"
+        },
+        {
+            "id": 1833,
+            "email": "perf.customer.1830@shop.test",
+            "orders": 30,
+            "kind": "light"
+        },
+        {
+            "id": 1876,
+            "email": "perf.customer.1873@shop.test",
+            "orders": 30,
+            "kind": "light"
+        },
+        {
+            "id": 1897,
+            "email": "perf.customer.1894@shop.test",
+            "orders": 30,
+            "kind": "light"
+        },
+        {
+            "id": 1914,
+            "email": "perf.customer.1911@shop.test",
+            "orders": 30,
+            "kind": "light"
+        },
+        {
+            "id": 1955,
+            "email": "perf.customer.1952@shop.test",
+            "orders": 30,
+            "kind": "light"
+        },
+        {
+            "id": 1772,
+            "email": "perf.customer.1769@shop.test",
+            "orders": 29,
+            "kind": "light"
+        },
+        {
+            "id": 1836,
+            "email": "perf.customer.1833@shop.test",
+            "orders": 29,
+            "kind": "light"
+        },
+        {
+            "id": 1855,
+            "email": "perf.customer.1852@shop.test",
+            "orders": 29,
+            "kind": "light"
+        },
+        {
+            "id": 1982,
+            "email": "perf.customer.1979@shop.test",
+            "orders": 29,
+            "kind": "light"
+        },
+        {
+            "id": 1972,
+            "email": "perf.customer.1969@shop.test",
+            "orders": 28,
+            "kind": "light"
+        },
+        {
+            "id": 1597,
+            "email": "perf.customer.1594@shop.test",
+            "orders": 27,
+            "kind": "light"
+        },
+        {
+            "id": 1949,
+            "email": "perf.customer.1946@shop.test",
+            "orders": 27,
+            "kind": "light"
+        },
+        {
+            "id": 1889,
+            "email": "perf.customer.1886@shop.test",
+            "orders": 25,
+            "kind": "light"
+        },
+        {
+            "id": 1983,
+            "email": "perf.customer.1980@shop.test",
+            "orders": 25,
+            "kind": "light"
+        },
+        {
+            "id": 1992,
+            "email": "perf.customer.1989@shop.test",
+            "orders": 23,
+            "kind": "light"
+        },
+        {
+            "id": 1971,
+            "email": "perf.customer.1968@shop.test",
+            "orders": 22,
+            "kind": "light"
+        }
+    ]
+}
