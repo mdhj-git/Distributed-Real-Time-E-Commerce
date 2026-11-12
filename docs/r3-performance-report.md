@@ -1,6 +1,6 @@
 # Requirement 3: performance report
 
-Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 found, no code change. Step 2 not started.
+Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 on reads, write-path per-item insert fixed (bulk insert). Step 2 not started.
 
 Rules for this file:
 - Every performance number (p50, p95, p99, requests per second, data volume) comes only from k6 output pasted by the reviewer, or from the JSON files in `perf/results/`. Nothing is estimated.
@@ -36,7 +36,7 @@ Per route and metric, one value per layer. `-` means not measured yet.
 
 Product list (`products_list`)
 - baseline (run 1 / run 2): p50 685.84 / 673.28 ms; p95 810.14 / 793.43 ms; p99 862.84 / 854.21 ms; requests 497 / 503; body bytes 6829055 / 6894948
-- step1-n-plus-1: unchanged (no code change)
+- step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes: -
 - step3 (Redis cache): reserved
 - step4: reserved
@@ -45,31 +45,31 @@ Product list (`products_list`)
 
 Product detail (`product_detail`)
 - baseline (run 1 / run 2): p50 674.22 / 654.11 ms; p95 786.79 / 771.84 ms; p99 822.73 / 848.75 ms; requests 374 / 377; body bytes 156751 / 157590
-- step1-n-plus-1: unchanged (no code change)
+- step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
 Customer order list (`orders_customer_list`)
 - baseline (run 1 / run 2): p50 662.31 / 654.20 ms; p95 779.76 / 778.31 ms; p99 825.85 / 838.71 ms; requests 338 / 347; body bytes 1898452 / 1948884
-- step1-n-plus-1: unchanged (no code change)
+- step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
 Customer order detail (`order_detail`)
 - baseline (run 1 / run 2): p50 660.45 / 646.76 ms; p95 776.58 / 774.86 ms; p99 820.78 / 827.65 ms; requests 272 / 276; body bytes 107536 / 109079
-- step1-n-plus-1: unchanged (no code change)
+- step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
 Admin order list (`orders_admin_list`)
 - baseline (run 1 / run 2): p50 773.45 / 767.29 ms; p95 988.22 / 955.48 ms; p99 1041.77 / 998.20 ms; requests 266 / 269; body bytes 2048246 / 2071963
-- step1-n-plus-1: unchanged (no code change)
+- step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
 Overall (tag `phase:main`): p50, p95, p99, requests per second, response body bytes (`data_received` sub-metric is n/a in k6)
 - baseline (run 1 / run 2 / mean): p50 682.58 / 671.84 / 677.21 ms; p95 858.56 / 860.94 / 859.75 ms; p99 982.35 / 941.09 / 961.72 ms; requests 1747 / 1772; req/s 29.12 / 29.53 / 29.33; body bytes 11040040 / 11182464
-- step1-n-plus-1: unchanged (no code change)
+- step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
@@ -139,10 +139,13 @@ Known limits of this baseline
 
 ## Step 1: N+1
 
-Outcome: no N+1 found, no code change, no new k6 run, because the code serving the requests is unchanged. The `step1-n-plus-1` k6 entries above stay "unchanged (no code change)".
+Outcome: no N+1 on any read route. The only per-item loop was the write path (`POST /orders`, one INSERT per item), and it is fixed with one bulk insert. There is no new k6 run for this step, because the k6 scenario only sends read requests and the code serving those requests is unchanged. The `step1-n-plus-1` k6 entries above stay "unchanged (no code change on the read paths)".
 
-- Evidence: `perf/MEASURE.md` sections 12.1 to 12.4 (the commands). No screenshots are needed because there is no k6 run for this step.
-- What changed in the application: nothing. A temporary query counter was added (`app/Providers/PerfQueryCounterServiceProvider.php`, registered in `bootstrap/providers.php`). It does nothing unless `PERF_QUERY_LOG=true`, and it stays until the final cleanup (Step 7) because Steps 2 and 3 need per-query evidence.
+- Evidence: `perf/MEASURE.md` sections 12.1 to 12.4 (the commands).
+- Screenshots in `docs/r3-evidence/` (supporting only): `step1-before-orders-stock-1.png` and `step1-before-orders-stock2.png` (the write path BEFORE the fix), and `step1-after-orders1.png` and `step1-after-orders2.png` (the write path AFTER the fix, section 12.4 run by the reviewer).
+- What changed in the application:
+  - `Modules/Orders/Services/OrderService.php`: `$order->items()->createMany($rows)` followed by `$order->load('items')` was replaced by one `OrderItem::query()->insert(...)` for all items (with `order_id`, `created_at`, `updated_at` set explicitly) and the `items` relation set from memory. Same transaction, same order of operations, same gRPC `reserve` and compensation, same response.
+  - A temporary query counter was added (`app/Providers/PerfQueryCounterServiceProvider.php`, registered in `bootstrap/providers.php`). It does nothing unless `PERF_QUERY_LOG=true`, and it stays until the final cleanup (Step 7) because Steps 2 and 3 need per-query evidence.
 - Method: one request per route, counter ON, through `localhost:8080` as a heavy fake customer or the admin. These numbers are NOT comparable with k6 results: the counter writes a log file, and the timings are single requests.
 - Result: no query is repeated inside any request, and 0 lazy-loading violations were logged.
 
@@ -166,15 +169,49 @@ Queries per request (summed query time in ms, single request, counter ON, not co
 - The gRPC `getStock` call of the product routes is not a database query and is not in this counter (one call per list page, from the code).
 - A first pass of the same requests showed the same query counts. Its single-request timings differed (for example the last admin page 326.63 ms), so single-request timings are noisy and are only a rough guide.
 
-Write path (real API orders, light fake customer, products 3 to 6, then cancelled through the API)
+Write path, first measurement (real API orders, light fake customer, products 3 to 6, then cancelled through the API)
 - `POST /orders` with 1 item: 6 queries (user lookup, one product lookup for all items, `insert orders`, 1 `insert order_items`, reload of the items, `insert user_notifications`), 1 gRPC `ReserveStock` call.
 - `POST /orders` with 4 items: 9 queries, 1 gRPC `ReserveStock` call.
-- So the query count grows by one for each extra item: `$order->items()->createMany($rows)` (`Modules/Orders/Services/OrderService.php:80`) runs one `insert into order_items` per item. This is a per-item write loop, not a read N+1. Not fixed (detection only). The request allows at most 20 items.
+- So the query count grew by one for each extra item: `$order->items()->createMany($rows)` ran one `insert into order_items` per item. This is a per-item write loop, not a read N+1. The request allows at most 20 items.
 - The gRPC calls do NOT grow with the number of items: one `ReserveStock` call carries all items.
 - Inside the inventory service (separate service, not changed) `reserveStock.js` runs one `UPDATE stock` and one `INSERT reservation_items` per item inside one transaction, and `releaseStock.js` one `UPDATE stock` per item. That cost is inside the service and is not visible to the application counter.
 - Cancel (`PATCH /orders/{id}/status`, admin): 6 queries and 1 gRPC `ReleaseStock` call for both orders.
 - Both test orders (ids 300001 and 300002) were cancelled through the API. Stock of products 3 to 6 was 1000000 before and after. The fake perf orders were not touched.
-- Dataset note: the two cancelled test orders stay in the database (5 order items and some notifications). The baseline dataset had 300000 orders.
+- Dataset note: the cancelled test orders stay in the database (with their order items and notifications). The baseline dataset had 300000 orders. The dataset will be regenerated in Step 2.
+
+Write path fix: before and after (Gate 1)
+- Same method for both runs: real API, light fake customer (id 1995), products 3 to 22 with quantity 1, counter ON only for the run, every order cancelled through the API, stock of products 3 to 22 checked before and after. Single requests, counter ON, NOT comparable with k6.
+- Before (current code, orders 300005 to 300007):
+  - `POST /orders` with 1 item: 6 queries, 1 gRPC `ReserveStock`.
+  - `POST /orders` with 4 items: 9 queries, 1 gRPC `ReserveStock`.
+  - `POST /orders` with 20 items: 25 queries, 1 gRPC `ReserveStock`.
+  - Cancel (`PATCH /orders/{id}/status`): 6 queries, 1 gRPC `ReleaseStock`, for all three orders.
+  - Stock restored: yes.
+- After (one bulk insert, orders 300008 to 300010):
+  - `POST /orders` with 1 item: 5 queries, 1 gRPC `ReserveStock`.
+  - `POST /orders` with 4 items: 5 queries, 1 gRPC `ReserveStock`.
+  - `POST /orders` with 20 items: 5 queries, 1 gRPC `ReserveStock`.
+  - Cancel: 6 queries, 1 gRPC `ReleaseStock`, for all three orders (unchanged).
+  - Stock restored: yes.
+- The query count no longer grows with the number of items. The 5 queries are: user lookup, one product lookup, `insert orders`, one `insert order_items` for all items, `insert user_notifications`. The reload of the items (`select * from order_items`) is gone because the response needs only the items that were just written, which are now set from memory.
+- The reviewer repeated section 12.4 of `perf/MEASURE.md` after the fix on his own terminal: `POST /orders` with 1 item = 5 queries and with 4 items = 5 queries (one `INSERT INTO order_items` with all rows), 1 gRPC `ReserveStock` each, cancel = 6 queries and 1 `ReleaseStock`, stock restored: True (orders 300023 and 300024).
+- Unchanged behaviour, checked for 1, 4 and 20 items:
+  - The JSON response of `POST /orders` is byte-for-byte equal before and after once the order id and the timestamps are masked (same structure, field order and values). Status 201, `Content-Type` and the `Location` header (with the id masked) are the same.
+  - The stored `order_items` rows have the same `product_id`, `product_name`, `unit_price` and `quantity`. `order_id`, `created_at` and `updated_at` are populated in every row, and the item timestamps equal the order's `created_at`.
+  - The order row has the same `status` and `total`.
+- Checks run after the change: `php artisan test` 56 passed (507 assertions, sqlite in memory, the MySQL dataset is not touched); `security:proof` 15 PASS; `orders:race-test --product=1 --count=10` PASS (one 201, nine 409) once product 1 had stock 1, as in step 4 of `docs/r2-demo-scenario.md`. A first run with stock 40 gave ten 201, which is the correct result for that stock and not a regression (the command expects stock 1). Stock of product 1 was set to 1 through the admin API for the proof and finally restored to 50 (the demo seed value; it was first put back to 40, then raised by 10, and checked through the API and in `inventory-db`). The pending orders created by the race runs remain until the dataset is regenerated in Step 2.
+
+gRPC on the read paths (measured by the reviewer)
+- `GET /products?page=1&per_page=15`, `GET /products?page=1&per_page=50` and `GET /products/103`: 1 x `GetStock` call per request. The call is batched per page, so there is no gRPC N+1.
+
+Conclusion for Step 1
+- No N+1 on any read route (query counts and gRPC calls are constant per request).
+- The only per-item loop was the write path (`createMany`, one INSERT per item). It is fixed: 5 queries for any number of items (1, 4 and 20 measured).
+- Not changed, by decision: the duplicate product lookup in product detail (about half a millisecond, not an N+1).
+
+Known limits
+- The missing `Modules/*/resources/views` directories were found while testing `php artisan optimize` and were fixed in a separate commit (`11f1c00`).
+- Single-request timings come from a counter that writes a log file, so they are only a rough guide and are not comparable with k6.
 
 Observations, not fixed
 - Product detail fetches the product twice: `where id = ?` (route model binding) and then `where products.id = ?` (`ProductService::find`). About half a millisecond, not an N+1. Decision: not worth changing the Products module. Kept as an observation.
