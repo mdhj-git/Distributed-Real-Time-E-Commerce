@@ -2,6 +2,7 @@
 
 namespace Modules\Orders\Services;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -77,9 +78,22 @@ class OrderService
                     'status' => OrderStatus::Pending,
                     'total' => Money::fromCents($totalCents),
                 ]);
-                $order->items()->createMany($rows);
 
-                return $order->load('items');
+                // One INSERT for all items, not one per item (createMany runs a separate INSERT per row).
+                // A bulk insert skips Eloquent, so the columns it would fill (order_id, timestamps) are set here.
+                // OrderItem has no observers or model events, so nothing else is skipped.
+                $now = now();
+                OrderItem::query()->insert(array_map(
+                    fn (array $row): array => $row + ['order_id' => $order->id, 'created_at' => $now, 'updated_at' => $now],
+                    $rows,
+                ));
+
+                // The response needs the items. They are set from memory instead of being read back.
+                // $rows is already sorted by product_id, the same order as the items() relation.
+                return $order->setRelation('items', new Collection(array_map(
+                    fn (array $row): OrderItem => new OrderItem($row + ['order_id' => $order->id]),
+                    $rows,
+                )));
             });
         } catch (Throwable $e) {
             $this->releaseAfterFailure($reference, $stockItems);

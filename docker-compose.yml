@@ -91,6 +91,20 @@ services:
       - ./proto:/proto:ro
     profiles: ["tools"]
 
+  # r3: measurement
+  # Load generator. Does not start with "docker compose up -d".
+  # Run: docker compose --profile perf run --rm k6 run /perf/k6/<script>.js
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: ["perf"]
+    volumes:
+      - ./perf:/perf
+    environment:
+      BASE_URL: http://nginx/api/v1
+    depends_on:
+      nginx:
+        condition: service_started
+
 volumes:
   mysql_data:
   inventory_db_data:
