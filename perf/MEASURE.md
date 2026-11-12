@@ -228,3 +228,210 @@ docker compose --profile perf run --rm -e LABEL=etag-on -e RUN=1 k6 run /perf/k6
 ```
 
 Follow the same warm-up, pause, two-run and restore rules. Replica lag commands belong to the caching and replica work, not to this file.
+
+## 12. Step 1: per-query counter (TEMPORARY, queries per route with single requests)
+
+The counter is a temporary provider (`app/Providers/PerfQueryCounterServiceProvider.php`, registered in `bootstrap/providers.php`).
+It is active only when `PERF_QUERY_LOG=true` and only for web requests. It stays until the final cleanup (Step 7) because Steps 2 and 3 need it. With `PERF_QUERY_LOG=false` it registers no listener and does no work beyond reading the flag.
+
+- It writes `storage/logs/perf-queries.jsonl` inside the app container: one JSON line per query (SQL with `?` placeholders, number of bindings, duration in ms), one per lazy-loading violation (logged, never thrown), and one `request` line per request (method, route, path, query string, status, query count, summed query ms, request ms).
+- It must be OFF during every k6 run. The `.env` value must be `false` before you run k6 (section 5 of this runbook).
+- Use single `curl.exe` requests, never k6, to count queries. The gRPC stock call is not a database query and is not in this file (the product list makes one `getStock` call per page).
+- `request_ms` is wall time of the request inside PHP and includes the logging overhead of this counter. Do not compare it with k6 numbers.
+
+Run from the project root in PowerShell (needs the `Invoke-MySql` helper from section 0 and a raised limit is NOT needed: about 15 requests).
+
+```powershell
+function Set-EnvValue([string]$name, [string]$value) {
+  $p = (Resolve-Path .env).Path
+  $t = [IO.File]::ReadAllText($p)
+  if ($t -match "(?m)^$name=") { $t = $t -replace "(?m)^$name=.*", "$name=$value" } else { $t = $t.TrimEnd() + "`n$name=$value`n" }
+  [IO.File]::WriteAllText($p, $t, (New-Object Text.UTF8Encoding $false))
+}
+
+# 1) enable the flag (takes effect on the next request, no restart needed)
+Set-EnvValue PERF_QUERY_LOG true
+
+# 2) log in one heavy fake customer and the admin (these two requests are logged, the next step clears them)
+$base = "http://localhost:8080/api/v1"
+$ds   = Get-Content perf\k6\customers.json -Raw | ConvertFrom-Json
+$cust = $ds.k6_customers[0]
+function Get-Token($email) { (Invoke-RestMethod -Method Post -Uri "$base/auth/login" -ContentType "application/json" -Body (@{ email = $email; password = $ds.password } | ConvertTo-Json)).data.token }
+$ct = Get-Token $cust.email
+$at = Get-Token $ds.admin_email
+$orderId = ("SELECT MAX(id) FROM ecommerce.orders WHERE user_id=$($cust.id);" | docker compose exec -T mysql sh -c 'MYSQL_PWD=$MYSQL_ROOT_PASSWORD mysql -uroot -N' | Select-Object -First 1).Trim()
+$adminLast = [math]::Ceiling($ds.orders.total / 20)
+
+# 3) empty the log (inside the container; the file stays writable for php-fpm)
+docker compose exec app sh -c ': > storage/logs/perf-queries.jsonl && chmod 666 storage/logs/perf-queries.jsonl'
+
+# 4) ONE curl.exe request per route (and parameter variant)
+$calls = @(
+  @{ p = "/products?page=1&per_page=15" },
+  @{ p = "/products?page=1&per_page=50" },
+  @{ p = "/products?page=1&per_page=15&category_id=1" },
+  @{ p = "/products?page=1&per_page=15&search=Premium" },
+  @{ p = "/products?page=300&per_page=15" },
+  @{ p = "/products/$($ds.products.first_id + 100)" },
+  @{ p = "/orders?page=1&per_page=15"; t = $ct },
+  @{ p = "/orders/$orderId"; t = $ct },
+  @{ p = "/orders?page=1&per_page=20"; t = $at },
+  @{ p = "/orders?page=300&per_page=20"; t = $at },
+  @{ p = "/orders?page=$adminLast&per_page=20"; t = $at }
+)
+foreach ($c in $calls) {
+  $a = @('-s', '-o', 'NUL', '-w', '%{http_code}', '-H', 'Accept: application/json')
+  if ($c.t) { $a += @('-H', "Authorization: Bearer $($c.t)") }
+  $a += "$base$($c.p)"
+  $code = curl.exe @a
+  "$code  $($c.p)"
+}
+
+# 5) summarise the JSONL
+$rows = docker compose exec -T app cat storage/logs/perf-queries.jsonl | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json }
+function Norm($s) { (($s -replace '\s+', ' ') -replace '\?(?:, ?\?)+', '?...') -replace 'in \(\d+(?:, ?\d+)*\)', 'in (ids...)' }
+
+"=== per request: status, queries, summed query ms"
+$rows | Where-Object type -eq 'request' | ForEach-Object { [pscustomobject]@{ status = $_.status; queries = $_.queries; db_ms = $_.ms; request = "$($_.method) /$($_.path)?$($_.query)" } } | Format-Table -AutoSize | Out-String -Width 250
+
+$q = $rows | Where-Object type -eq 'query' | ForEach-Object { [pscustomobject]@{ req = $_.req; route = $_.route; ms = [double]$_.ms; nsql = Norm $_.sql } }
+
+"=== repeated normalized queries inside ONE request (N+1 suspects)"
+$q | Group-Object { "$($_.req)|$($_.nsql)" } | Where-Object Count -gt 1 | ForEach-Object { [pscustomobject]@{ times = $_.Count; route = $_.Group[0].route; db_ms = [math]::Round(($_.Group | Measure-Object ms -Sum).Sum, 2); sql = $_.Group[0].nsql } } | Sort-Object times -Descending | Format-Table -Wrap -AutoSize | Out-String -Width 250
+
+"=== per normalized SQL over all requests, highest total ms first"
+$q | Group-Object nsql | ForEach-Object { [pscustomobject]@{ count = $_.Count; total_ms = [math]::Round(($_.Group | Measure-Object ms -Sum).Sum, 2); sql = $_.Name } } | Sort-Object total_ms -Descending | Select-Object -First 15 | Format-Table -Wrap -AutoSize | Out-String -Width 250
+
+"=== lazy-loading violations"
+$rows | Where-Object type -eq 'lazy_loading' | Group-Object route, model, relation | ForEach-Object { "$($_.Count) x $($_.Name)" }
+
+# 6) turn the flag OFF again (required before any k6 run)
+Set-EnvValue PERF_QUERY_LOG false
+```
+
+The same commands are used for the "after" counts in Gate 1 (turn the flag on, repeat, turn it off).
+
+### 12.2 Helpers for the extra checks (run once per PowerShell window; Set-EnvValue from 12 must exist)
+
+```powershell
+$base = "http://localhost:8080/api/v1"
+$ds   = Get-Content perf\k6\customers.json -Raw | ConvertFrom-Json
+function Get-Token($email) { (Invoke-RestMethod -Method Post -Uri "$base/auth/login" -ContentType "application/json" -Body (@{ email = $email; password = $ds.password } | ConvertTo-Json)).data.token }
+function Norm($s) { (($s -replace '\s+', ' ') -replace '\?(?:, ?\?)+', '?...') -replace 'in \(\d+(?:, ?\d+)*\)', 'in (ids...)' }
+function Clear-Counter { docker compose exec app sh -c ': > storage/logs/perf-queries.jsonl && chmod 666 storage/logs/perf-queries.jsonl' }
+function Read-Counter { docker compose exec -T app cat storage/logs/perf-queries.jsonl | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json } }
+function Show-Counter($labels) {
+  $rows = @(Read-Counter)
+  $i = 0
+  "=== per request (labels are in the order the requests were sent)"
+  @($rows | Where-Object type -eq 'request') | ForEach-Object { [pscustomobject]@{ who = $labels[$i++]; status = $_.status; queries = $_.queries; db_ms = $_.ms; request = "$($_.method) /$($_.path)?$($_.query)" } } | Format-Table -AutoSize | Out-String -Width 250
+  $q = @($rows | Where-Object type -eq 'query' | ForEach-Object { [pscustomobject]@{ req = $_.req; route = $_.route; ms = [double]$_.ms; nsql = Norm $_.sql } })
+  "=== repeated normalized queries inside ONE request (N+1 suspects; empty = none)"
+  $q | Group-Object { "$($_.req)|$($_.nsql)" } | Where-Object Count -gt 1 | ForEach-Object { [pscustomobject]@{ times = $_.Count; route = $_.Group[0].route; db_ms = [math]::Round(($_.Group | Measure-Object ms -Sum).Sum, 2); sql = $_.Group[0].nsql } } | Sort-Object times -Descending | Format-Table -Wrap -AutoSize | Out-String -Width 250
+  "=== lazy-loading violations: $(@($rows | Where-Object type -eq 'lazy_loading').Count)"
+}
+function Show-Queries {   # every query of every request, in order (use for short runs)
+  $rows = @(Read-Counter)
+  foreach ($r in @($rows | Where-Object type -eq 'request')) {
+    "--- $($r.status) $($r.method) /$($r.path)  queries=$($r.queries) db_ms=$($r.ms)"
+    $rows | Where-Object { $_.req -eq $r.req -and $_.type -eq 'query' } | ForEach-Object { "   {0,8} ms  {1}" -f $_.ms, (Norm $_.sql) }
+  }
+}
+```
+
+### 12.3 Complete list of GET routes (read-only)
+
+```powershell
+docker compose exec -T app php artisan route:list --path=api --except-vendor
+Set-EnvValue PERF_QUERY_LOG true
+$cust = $ds.k6_customers[0]            # heavy fake customer
+$ct = Get-Token $cust.email; $at = Get-Token $ds.admin_email
+$orderId = ("SELECT MAX(id) FROM ecommerce.orders WHERE user_id=$($cust.id);" | docker compose exec -T mysql sh -c 'MYSQL_PWD=$MYSQL_ROOT_PASSWORD mysql -uroot -N' | Select-Object -First 1).Trim()
+$adminLast = [math]::Ceiling($ds.orders.total / 20)
+Clear-Counter
+$calls = @(
+  @{ w = 'anon';     p = "/health" },
+  @{ w = 'anon';     p = "/categories" },
+  @{ w = 'anon';     p = "/products?page=1&per_page=15" },
+  @{ w = 'anon';     p = "/products?page=1&per_page=50" },
+  @{ w = 'anon';     p = "/products?page=1&per_page=15&category_id=1" },
+  @{ w = 'anon';     p = "/products?page=1&per_page=15&search=Premium" },
+  @{ w = 'anon';     p = "/products?page=300&per_page=15" },
+  @{ w = 'anon';     p = "/products/$($ds.products.first_id + 100)" },
+  @{ w = 'customer'; p = "/auth/me"; t = $ct },
+  @{ w = 'admin';    p = "/auth/me"; t = $at },
+  @{ w = 'customer'; p = "/notifications"; t = $ct },
+  @{ w = 'admin';    p = "/notifications"; t = $at },
+  @{ w = 'customer'; p = "/orders?page=1&per_page=15"; t = $ct },
+  @{ w = 'customer'; p = "/orders/$orderId"; t = $ct },
+  @{ w = 'admin';    p = "/orders/$orderId"; t = $at },
+  @{ w = 'admin';    p = "/orders?page=1&per_page=20"; t = $at },
+  @{ w = 'admin';    p = "/orders?page=300&per_page=20"; t = $at },
+  @{ w = 'admin';    p = "/orders?page=$adminLast&per_page=20"; t = $at }
+)
+foreach ($c in $calls) {
+  $a = @('-s', '-o', 'NUL', '-w', '%{http_code}', '-H', 'Accept: application/json')
+  if ($c.t) { $a += @('-H', "Authorization: Bearer $($c.t)") }
+  $a += "$base$($c.p)"
+  "$(curl.exe @a)  $($c.w)  $($c.p)"
+}
+Show-Counter ($calls | ForEach-Object { "$($_.w) $($_.p)" })
+Set-EnvValue PERF_QUERY_LOG false
+```
+
+`/health` is excluded from the api limiter and does not touch the database. All other routes of `route:list` are writes (POST, PATCH, DELETE) and are not part of this check, except order creation and cancellation in 12.4.
+
+### 12.4 Write path: POST /orders with 1 item and with 4 items, then cancel (uses REAL API orders, never the fake perf orders)
+
+- Uses a light fake customer and fake products 3 to 6 (stock 1,000,000 each).
+- Every order created here is cancelled through the API (admin `PATCH /orders/{id}/status`), which releases the reserved stock. The script then compares the stock before and after.
+- The cancelled orders stay in the database as cancelled orders (nothing is deleted). They have the highest order ids and add a few rows to `orders` and `order_items`. Do not run it between a baseline and its comparison run unless you accept that.
+- gRPC calls: the counter only sees database queries. The inventory service logs one line per call, so the script counts the new lines of `docker compose logs inventory` after each request.
+
+```powershell
+$light = @($ds.k6_customers | Where-Object kind -eq 'light')[0]
+$ids = 3, 4, 5, 6
+function Get-Stock($id) { (Invoke-RestMethod -Uri "$base/products/$id").data.stock }
+function Inv-Count { @(docker compose logs --no-log-prefix inventory).Count }
+function Inv-New($n0) { Start-Sleep -Seconds 1; $all = @(docker compose logs --no-log-prefix inventory); ($all | Select-Object -Skip $n0) | ForEach-Object { ($_ | ConvertFrom-Json).message } | Group-Object | ForEach-Object { "$($_.Count) x $($_.Name)" } }
+function Send-Json($method, $path, $token, $obj) {   # Invoke-WebRequest, because piping a body into curl.exe did not reach the server
+  try {
+    $r = Invoke-WebRequest -UseBasicParsing -Method $method -Uri "$base$path" -Headers @{ Authorization = "Bearer $token"; Accept = 'application/json' } -ContentType 'application/json' -Body ($obj | ConvertTo-Json -Depth 5 -Compress)
+    [pscustomobject]@{ code = [int]$r.StatusCode; body = $r.Content }
+  } catch {
+    [pscustomobject]@{ code = [int]$_.Exception.Response.StatusCode; body = $_.ErrorDetails.Message }
+  }
+}
+
+$before = $ids | ForEach-Object { Get-Stock $_ }
+"stock before: $($before -join ', ')"
+Set-EnvValue PERF_QUERY_LOG true
+$lt = Get-Token $light.email; $at = Get-Token $ds.admin_email
+Clear-Counter
+$created = @()
+try {
+  foreach ($n in 1, 4) {
+    $items = @(); foreach ($id in $ids[0..($n - 1)]) { $items += @{ product_id = $id; quantity = 1 } }
+    $n0 = Inv-Count
+    $out = Send-Json POST "/orders" $lt @{ items = $items }
+    $json = $out.body | ConvertFrom-Json
+    "POST /orders with $n item(s): HTTP $($out.code), order id $($json.data.id)"
+    if ($json.data.id) { $created += $json.data.id }
+    "  gRPC calls to the inventory service: " + ((Inv-New $n0) -join "; ")
+  }
+}
+finally {
+  foreach ($oid in $created) {
+    $n0 = Inv-Count
+    $out = Send-Json PATCH "/orders/$oid/status" $at @{ status = 'cancelled' }
+    "PATCH /orders/$oid/status cancelled: HTTP $($out.code)"
+    "  gRPC calls to the inventory service: " + ((Inv-New $n0) -join "; ")
+  }
+}
+Show-Queries
+Set-EnvValue PERF_QUERY_LOG false
+$after = $ids | ForEach-Object { Get-Stock $_ }
+"stock after:  $($after -join ', ')"
+"stock restored: $((Compare-Object $before $after -SyncWindow 0).Count -eq 0)"
+```
+

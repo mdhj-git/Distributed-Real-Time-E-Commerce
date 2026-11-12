@@ -1,6 +1,6 @@
 # Requirement 3: performance report
 
-Status: Step 0 (measurement infrastructure) done. Baseline recorded (Gate 0). Steps 1 and 2 not started.
+Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 found, no code change. Step 2 not started.
 
 Rules for this file:
 - Every performance number (p50, p95, p99, requests per second, data volume) comes only from k6 output pasted by the reviewer, or from the JSON files in `perf/results/`. Nothing is estimated.
@@ -36,7 +36,7 @@ Per route and metric, one value per layer. `-` means not measured yet.
 
 Product list (`products_list`)
 - baseline (run 1 / run 2): p50 685.84 / 673.28 ms; p95 810.14 / 793.43 ms; p99 862.84 / 854.21 ms; requests 497 / 503; body bytes 6829055 / 6894948
-- step1-n-plus-1: -
+- step1-n-plus-1: unchanged (no code change)
 - step2-indexes: -
 - step3 (Redis cache): reserved
 - step4: reserved
@@ -45,31 +45,31 @@ Product list (`products_list`)
 
 Product detail (`product_detail`)
 - baseline (run 1 / run 2): p50 674.22 / 654.11 ms; p95 786.79 / 771.84 ms; p99 822.73 / 848.75 ms; requests 374 / 377; body bytes 156751 / 157590
-- step1-n-plus-1: -
+- step1-n-plus-1: unchanged (no code change)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
 Customer order list (`orders_customer_list`)
 - baseline (run 1 / run 2): p50 662.31 / 654.20 ms; p95 779.76 / 778.31 ms; p99 825.85 / 838.71 ms; requests 338 / 347; body bytes 1898452 / 1948884
-- step1-n-plus-1: -
+- step1-n-plus-1: unchanged (no code change)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
 Customer order detail (`order_detail`)
 - baseline (run 1 / run 2): p50 660.45 / 646.76 ms; p95 776.58 / 774.86 ms; p99 820.78 / 827.65 ms; requests 272 / 276; body bytes 107536 / 109079
-- step1-n-plus-1: -
+- step1-n-plus-1: unchanged (no code change)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
 Admin order list (`orders_admin_list`)
 - baseline (run 1 / run 2): p50 773.45 / 767.29 ms; p95 988.22 / 955.48 ms; p99 1041.77 / 998.20 ms; requests 266 / 269; body bytes 2048246 / 2071963
-- step1-n-plus-1: -
+- step1-n-plus-1: unchanged (no code change)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
 Overall (tag `phase:main`): p50, p95, p99, requests per second, response body bytes (`data_received` sub-metric is n/a in k6)
 - baseline (run 1 / run 2 / mean): p50 682.58 / 671.84 / 677.21 ms; p95 858.56 / 860.94 / 859.75 ms; p99 982.35 / 941.09 / 961.72 ms; requests 1747 / 1772; req/s 29.12 / 29.53 / 29.33; body bytes 11040040 / 11182464
-- step1-n-plus-1: -
+- step1-n-plus-1: unchanged (no code change)
 - step2-indexes: -
 - steps 3 to 6: reserved
 
@@ -139,10 +139,54 @@ Known limits of this baseline
 
 ## Step 1: N+1
 
-- Evidence: `docs/r3-evidence/step1-n-plus-1-*`.
-- What changed: to be filled.
-- Queries per route before and after (single `curl` requests): to be filled.
-- Numbers and interpretation: to be filled.
+Outcome: no N+1 found, no code change, no new k6 run, because the code serving the requests is unchanged. The `step1-n-plus-1` k6 entries above stay "unchanged (no code change)".
+
+- Evidence: `perf/MEASURE.md` sections 12.1 to 12.4 (the commands). No screenshots are needed because there is no k6 run for this step.
+- What changed in the application: nothing. A temporary query counter was added (`app/Providers/PerfQueryCounterServiceProvider.php`, registered in `bootstrap/providers.php`). It does nothing unless `PERF_QUERY_LOG=true`, and it stays until the final cleanup (Step 7) because Steps 2 and 3 need per-query evidence.
+- Method: one request per route, counter ON, through `localhost:8080` as a heavy fake customer or the admin. These numbers are NOT comparable with k6 results: the counter writes a log file, and the timings are single requests.
+- Result: no query is repeated inside any request, and 0 lazy-loading violations were logged.
+
+Queries per request (summed query time in ms, single request, counter ON, not comparable with k6)
+- `GET /health`: 0 queries, 0 ms.
+- `GET /categories`: 1 query, 1.96 ms.
+- `GET /products?page=1&per_page=15`: 4 queries, 6.06 ms.
+- `GET /products?page=1&per_page=50`: 4 queries, 6.69 ms.
+- `GET /products?page=1&per_page=15&category_id=1`: 5 queries, 6.94 ms (the extra query is the `exists` validation of the category).
+- `GET /products?page=1&per_page=15&search=Premium`: 4 queries, 6.29 ms.
+- `GET /products?page=300&per_page=15`: 4 queries, 7.4 ms.
+- `GET /products/103`: 4 queries, 3.78 ms.
+- `GET /auth/me` as customer and as admin: 1 query each, 2.35 ms and 2.39 ms.
+- `GET /notifications` as customer and as admin: 2 queries each, 8.03 ms and 3.34 ms.
+- `GET /orders?page=1&per_page=15` as customer: 4 queries, 13.8 ms.
+- `GET /orders/299973` as customer and as admin: 3 queries each, 3.13 ms and 3.32 ms.
+- `GET /orders?page=1&per_page=20` as admin: 4 queries, 52.72 ms.
+- `GET /orders?page=300&per_page=20` as admin: 4 queries, 38.37 ms.
+- `GET /orders?page=15000&per_page=20` as admin (last page): 4 queries, 231.95 ms.
+- The query count does not grow with the page size (4 queries at `per_page` 15 and 50) nor with the page number. This is what no N+1 looks like.
+- The gRPC `getStock` call of the product routes is not a database query and is not in this counter (one call per list page, from the code).
+- A first pass of the same requests showed the same query counts. Its single-request timings differed (for example the last admin page 326.63 ms), so single-request timings are noisy and are only a rough guide.
+
+Write path (real API orders, light fake customer, products 3 to 6, then cancelled through the API)
+- `POST /orders` with 1 item: 6 queries (user lookup, one product lookup for all items, `insert orders`, 1 `insert order_items`, reload of the items, `insert user_notifications`), 1 gRPC `ReserveStock` call.
+- `POST /orders` with 4 items: 9 queries, 1 gRPC `ReserveStock` call.
+- So the query count grows by one for each extra item: `$order->items()->createMany($rows)` (`Modules/Orders/Services/OrderService.php:80`) runs one `insert into order_items` per item. This is a per-item write loop, not a read N+1. Not fixed (detection only). The request allows at most 20 items.
+- The gRPC calls do NOT grow with the number of items: one `ReserveStock` call carries all items.
+- Inside the inventory service (separate service, not changed) `reserveStock.js` runs one `UPDATE stock` and one `INSERT reservation_items` per item inside one transaction, and `releaseStock.js` one `UPDATE stock` per item. That cost is inside the service and is not visible to the application counter.
+- Cancel (`PATCH /orders/{id}/status`, admin): 6 queries and 1 gRPC `ReleaseStock` call for both orders.
+- Both test orders (ids 300001 and 300002) were cancelled through the API. Stock of products 3 to 6 was 1000000 before and after. The fake perf orders were not touched.
+- Dataset note: the two cancelled test orders stay in the database (5 order items and some notifications). The baseline dataset had 300000 orders.
+
+Observations, not fixed
+- Product detail fetches the product twice: `where id = ?` (route model binding) and then `where products.id = ?` (`ProductService::find`). About half a millisecond, not an N+1. Decision: not worth changing the Products module. Kept as an observation.
+- Every authenticated request runs one `select * from users where id = ?` (one query, not a loop).
+- `GrpcInventoryService` is bound with `bind`, not `singleton` (see the note below).
+
+Inputs for Step 2 (admin order list, from the same single requests)
+- `select count(*) as aggregate from orders` runs on every admin page. It took 81.56 ms, 31.51 ms and 31.19 ms on page 1, page 300 and the last page in the first pass.
+- Large OFFSET on far pages: `order by id desc limit 20 offset 299980` took 291.53 ms on the last page, against 3.43 ms for `offset 5980` (page 300) and 0.56 ms for `offset 0`.
+- The customer order list runs a `count(*)` filtered by `user_id` (5.71 ms for the heavy customer with 16478 orders) and a `limit 15 offset 0` query (8.58 ms).
+- Product list queries are all in the low milliseconds at this size (the `count(*)` on products and the `name like` count are 3 to 8 ms).
+- Whether an index helps any of these is for Step 2 to decide with `EXPLAIN`.
 - Note (no change made): `GrpcInventoryService` is bound with `bind`, not `singleton` (`Modules/Products/Providers/ProductsServiceProvider.php`). Changing it would touch the Requirement 2 contract, so it is only noted.
 
 ## Step 2: indexes and EXPLAIN
