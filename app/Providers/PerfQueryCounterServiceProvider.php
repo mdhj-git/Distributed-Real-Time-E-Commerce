@@ -10,13 +10,14 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * TEMPORARY (Requirement 3, Step 1). Removed at the end of Step 1.
+ * TEMPORARY (Requirement 3). Stays until the final cleanup (Step 7).
  *
  * Active only when PERF_QUERY_LOG=true and only for web requests (never for artisan).
  * It must stay OFF during every k6 run: writing to the 9p-mounted storage would distort the numbers.
  *
  * Output: storage/logs/perf-queries.jsonl, one JSON line per query, one per lazy-loading violation
- * (logged only, never thrown) and one summary line per request. Bindings are NOT logged, only their count.
+ * (logged only, never thrown) and one summary line per request. Binding values are logged in `values`
+ * (strings cut to 100 chars), except for /auth/* requests where only the count is kept.
  */
 class PerfQueryCounterServiceProvider extends ServiceProvider
 {
@@ -32,13 +33,21 @@ class PerfQueryCounterServiceProvider extends ServiceProvider
         }
 
         DB::listen(function (QueryExecuted $query): void {
-            $this->buffer[] = [
+            $row = [
                 'type' => 'query',
                 'sql' => $query->sql,
                 'bindings' => count($query->bindings),
                 'ms' => round($query->time, 3),
                 'connection' => $query->connectionName,
             ];
+
+            // Binding values are needed to rebuild a query for EXPLAIN. Never recorded for /auth/*
+            // (login carries credentials). Strings are cut to 100 characters.
+            if (! $this->isAuthRequest()) {
+                $row['values'] = array_map(self::cut(...), $query->bindings);
+            }
+
+            $this->buffer[] = $row;
         });
 
         // Log only: a custom handler replaces the default exception, so nothing is ever thrown.
@@ -52,6 +61,20 @@ class PerfQueryCounterServiceProvider extends ServiceProvider
         });
 
         Event::listen(RequestHandled::class, fn (RequestHandled $event) => $this->flush($event));
+    }
+
+    private function isAuthRequest(): bool
+    {
+        return str_contains('/'.$this->app['request']->path().'/', '/auth/');
+    }
+
+    private static function cut(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return mb_strlen($value) > 100 ? mb_substr($value, 0, 100).'...' : $value;
+        }
+
+        return is_scalar($value) || $value === null ? $value : get_debug_type($value);
     }
 
     private function flush(RequestHandled $event): void
