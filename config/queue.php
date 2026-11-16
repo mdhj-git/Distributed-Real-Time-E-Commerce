@@ -90,7 +90,9 @@ return [
 
             'options' => [
                 'queue' => [
-                    // r4: dead-letter rerouting is added in step A4.
+                    // r4: after the last failed attempt RabbitMQ moves the message to "orders.failed".
+                    'reroute_failed' => true,
+                    'failed_routing_key' => '%s.failed',
                 ],
             ],
 
