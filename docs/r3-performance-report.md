@@ -2,7 +2,7 @@
 
 Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 on reads, write-path per-item insert fixed (bulk insert). Step 2: analysis done, no new index is justified, no migration. One query rewrite (deferred join in `OrderService::paginate`) is implemented and checked (JSON identical). The `step2-indexes` k6 run is recorded (2 valid runs, lower than the baseline on every route, NOT attributed to the rewrite: the same-day control run was not done, by decision). The regression checks passed. The scratch-table write-cost and read-side benchmark is done and cleaned up. Zero indexes were added.
 
-Steps 3 to 5 (branch `feat/r3-step3-5-caching`): Step 3 (cache store) is skipped because the store is already Redis. The same-day control `step3-pre` is recorded (2 valid runs). Step 4 (catalog cache in Redis) is implemented and measured (`step4-redis`, 2 valid runs, 99 percent HIT on the cached routes); the measurement files wait for the reviewer's commit. The latency gain on the cached routes cannot be credited to the cache alone, see "Reading" in "Step 4 k6 measurement". Step 5 (ETag) is not started. Numbers for them are filled only from the k6 output pasted by the reviewer.
+Steps 3 to 5 (branch `feat/r3-step3-5-caching`): Step 3 (cache store) is skipped because the store is already Redis. The same-day control `step3-pre` is recorded (2 valid runs). Step 4 (catalog cache in Redis) is implemented and measured (`step4-redis`, 2 valid runs, 99 percent HIT on the cached routes); the measurement files wait for the reviewer's commit. The latency gain on the cached routes cannot be credited to the cache alone, see "Reading" in "Step 4 k6 measurement". Step 5 (ETag) is done (Gates 5a and 5b). The ETag code works under load (304 on 16.5 to 17.9 percent of the `etag-on` requests, about 17 percent fewer response body bytes per request). No server-time effect can be shown or excluded: the differences between `etag-off2` (ETag off) and `etag-on` (ETag on, same sitting) in p50, p95, p99 and requests per second are all inside the run-to-run spread, and the p95 rule was waived for every `etag.js` label. The first baseline `etag-off` was measured on a faster host and is not comparable with `etag-on`. The main-scenario label `step5-etag` was NOT run, by decision. Numbers are filled only from the k6 output pasted by the reviewer.
 
 Rules for this file:
 - Every performance number (p50, p95, p99, requests per second, data volume) comes only from k6 output pasted by the reviewer, or from the JSON files in `perf/results/`. Nothing is estimated.
@@ -34,7 +34,7 @@ Rules for this file:
 
 ## Results: before and after (filled after each gate)
 
-Per route and metric, one value per layer. `-` means not measured yet.
+Per route and metric, one value per layer. `-` means not measured yet. The labels `etag-off`, `etag-off2` and `etag-on` use the single-route script `etag.js` (route `product_detail_etag`) and are not comparable with the main-scenario lines below; they are reported in "Step 5: ETag" only. The main-scenario label `step5-etag` was not run (decision, see "Step 5: ETag").
 
 Product list (`products_list`)
 - baseline (run 1 / run 2): p50 685.84 / 673.28 ms; p95 810.14 / 793.43 ms; p99 862.84 / 854.21 ms; requests 497 / 503; body bytes 6829055 / 6894948
@@ -42,7 +42,7 @@ Product list (`products_list`)
 - step2-indexes (run 1 / run 2): p50 668.40 / 670.47 ms; p95 771.59 / 763.45 ms; p99 807.28 / 802.71 ms; requests 524 / 521; body bytes 7169504 / 7107567. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 678.47 / 670.29 ms; p95 834.34 / 779.06 ms; p99 908.05 / 818.03 ms; requests 500 / 517; body bytes 6877153 / 7082417. X-Cache: absent 500 / 517 (no cache exists yet).
 - step4-redis (run 1 / run 2): p50 596.10 / 582.31 ms; p95 721.42 / 698.82 ms; p99 857.82 / 748.85 ms; requests 575 / 585; body bytes 7871958 / 7979043. X-Cache: HIT 575 / 585, MISS 0 / 0. Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
-- step5-etag: reserved
+- step5-etag: not run (decision, see "Step 5: ETag")
 - step6 (Read Replica): reserved
 
 Product detail (`product_detail`)
@@ -51,7 +51,7 @@ Product detail (`product_detail`)
 - step2-indexes (run 1 / run 2): p50 646.82 / 645.45 ms; p95 737.75 / 738.55 ms; p99 780.01 / 774.52 ms; requests 388 / 389; body bytes 162568 / 162957. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 664.41 / 651.83 ms; p95 800.29 / 750.92 ms; p99 863.00 / 801.45 ms; requests 377 / 386; body bytes 157872 / 161888. X-Cache: absent 377 / 386.
 - step4-redis (run 1 / run 2): p50 588.18 / 575.00 ms; p95 718.95 / 697.64 ms; p99 871.05 / 727.84 ms; requests 415 / 429; body bytes 174048 / 180205. X-Cache: HIT 407 / 418, MISS 8 / 11. Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
-- step5-etag, step6 (Read Replica): reserved
+- step5-etag: not run (decision, see "Step 5: ETag"). step6 (Read Replica): reserved
 
 Customer order list (`orders_customer_list`)
 - baseline (run 1 / run 2): p50 662.31 / 654.20 ms; p95 779.76 / 778.31 ms; p99 825.85 / 838.71 ms; requests 338 / 347; body bytes 1898452 / 1948884
@@ -59,7 +59,7 @@ Customer order list (`orders_customer_list`)
 - step2-indexes (run 1 / run 2): p50 646.85 / 642.99 ms; p95 742.89 / 746.08 ms; p99 790.18 / 767.48 ms; requests 359 / 356; body bytes 2017822 / 2000418. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 664.02 / 650.62 ms; p95 791.82 / 752.19 ms; p99 827.65 / 798.14 ms; requests 343 / 356; body bytes 1925927 / 2000149. X-Cache: absent 343 / 356.
 - step4-redis (run 1 / run 2): p50 594.24 / 584.26 ms; p95 728.21 / 705.46 ms; p99 844.60 / 756.99 ms; requests 396 / 406; body bytes 2226930 / 2284436. X-Cache: absent 396 / 406 (route not cached). Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
-- step5-etag, step6 (Read Replica): reserved
+- step5-etag: not run (decision, see "Step 5: ETag"). step6 (Read Replica): reserved
 
 Customer order detail (`order_detail`)
 - baseline (run 1 / run 2): p50 660.45 / 646.76 ms; p95 776.58 / 774.86 ms; p99 820.78 / 827.65 ms; requests 272 / 276; body bytes 107536 / 109079
@@ -67,7 +67,7 @@ Customer order detail (`order_detail`)
 - step2-indexes (run 1 / run 2): p50 635.29 / 635.81 ms; p95 726.50 / 726.33 ms; p99 756.23 / 752.62 ms; requests 281 / 279; body bytes 111074 / 110289. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 653.31 / 643.86 ms; p95 807.37 / 739.36 ms; p99 859.62 / 772.76 ms; requests 276 / 278; body bytes 109079 / 109856. X-Cache: absent 276 / 278.
 - step4-redis (run 1 / run 2): p50 580.19 / 572.10 ms; p95 703.76 / 683.53 ms; p99 834.39 / 712.56 ms; requests 303 / 309; body bytes 119398 / 121801. X-Cache: absent 303 / 309 (route not cached). Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
-- step5-etag, step6 (Read Replica): reserved
+- step5-etag: not run (decision, see "Step 5: ETag"). step6 (Read Replica): reserved
 
 Admin order list (`orders_admin_list`)
 - baseline (run 1 / run 2): p50 773.45 / 767.29 ms; p95 988.22 / 955.48 ms; p99 1041.77 / 998.20 ms; requests 266 / 269; body bytes 2048246 / 2071963
@@ -75,7 +75,7 @@ Admin order list (`orders_admin_list`)
 - step2-indexes (run 1 / run 2): p50 716.45 / 733.32 ms; p95 832.03 / 844.55 ms; p99 866.30 / 880.26 ms; requests 280 / 277; body bytes 2155456 / 2132503. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 753.17 / 726.12 ms; p95 918.92 / 826.37 ms; p99 1006.43 / 872.24 ms; requests 268 / 276; body bytes 2014582 / 2075454. X-Cache: absent 268 / 276.
 - step4-redis (run 1 / run 2): p50 667.49 / 649.60 ms; p95 813.83 / 786.87 ms; p99 938.24 / 830.07 ms; requests 303 / 308; body bytes 2275186 / 2312266. X-Cache: absent 303 / 308 (route not cached). Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
-- step5-etag, step6 (Read Replica): reserved
+- step5-etag: not run (decision, see "Step 5: ETag"). step6 (Read Replica): reserved
 
 Overall (tag `phase:main`): p50, p95, p99, requests per second, response body bytes (`data_received` sub-metric is n/a in k6)
 - baseline (run 1 / run 2 / mean): p50 682.58 / 671.84 / 677.21 ms; p95 858.56 / 860.94 / 859.75 ms; p99 982.35 / 941.09 / 961.72 ms; requests 1747 / 1772; req/s 29.12 / 29.53 / 29.33; body bytes 11040040 / 11182464
@@ -83,7 +83,7 @@ Overall (tag `phase:main`): p50, p95, p99, requests per second, response body by
 - step2-indexes (run 1 / run 2 / mean): p50 659.57 / 661.29 / 660.43 ms; p95 773.41 / 780.96 / 777.19 ms; p99 828.60 / 841.48 / 835.04 ms; requests 1832 / 1822; req/s 30.53 / 30.37 / 30.45; body bytes 11616424 / 11513734. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2 / mean): p50 676.09 / 666.06 / 671.07 ms; p95 834.32 / 785.31 / 809.81 ms; p99 921.92 / 821.91 / 871.91 ms; requests 1764 / 1813; req/s 29.40 / 30.22 / 29.81; body bytes 11084613 / 11429764. X-Cache: absent 1764 / 1813. Details in "Step 3" below.
 - step4-redis (run 1 / run 2 / mean): p50 601.61 / 587.62 / 594.62 ms; p95 751.77 / 720.61 / 736.19 ms; p99 876.16 / 776.41 / 826.29 ms; requests 1992 / 2037; req/s 33.20 / 33.95 / 33.58; body bytes 12667520 / 12877751. X-Cache: HIT 982 / 1003, MISS 8 / 11, absent 1002 / 1023. Details in "Step 4 k6 measurement" below.
-- step5-etag, step6 (Read Replica): reserved
+- step5-etag: not run (decision, see "Step 5: ETag"). step6 (Read Replica): reserved
 
 ## Baseline
 
@@ -795,7 +795,181 @@ Known limits of this measurement
 
 ## Step 5: ETag
 
-Reserved. Filled by a later request. Scenario script: `perf/k6/etag.js`.
+Status: Gates 5a and 5b done. Gate 5a: baseline `etag-off`, measured on the unchanged code on a faster host state. Gate 5b: the ETag code (committed as `cb0d4a3`), the reviewer's manual matrix, the measurement `etag-on` and its same-sitting control `etag-off2` (ETag switched off by `ETAG_ENABLED=false`), and the regression checks. The comparison for the ETag effect is `etag-off2` against `etag-on` only; `etag-off` is not comparable with `etag-on` (see "Gate 5b measurements"). The main-scenario label `step5-etag` was not run, by decision. All numbers come only from the k6 output and terminal output pasted by the reviewer.
+
+Design (approved): a route middleware `ConditionalEtag` on `GET /api/v1/products/{product}` only, a strong ETag (`xxh128` of the final JSON body), `Cache-Control: no-cache, private`, 304 when `If-None-Match` matches, switch `ETAG_ENABLED` (default true). The baseline was measured BEFORE any of this code was written (Rule 17), by decision of the reviewer.
+
+### Gate 5a: baseline `etag-off` (script `perf/k6/etag.js`, unchanged code)
+
+What was measured
+- Code under test: HEAD `c11a909`, working tree clean, `git diff --stat` over `app`, `Modules`, `config`, `bootstrap`, `routes`, `database`, `docker`, `docker-compose.yml`, `composer.*`, `.env.example` and `services` empty (printed empty by the reviewer before the runs). The server sends no `ETag` header and ignores `If-None-Match`.
+- Script: 20 VUs, constant, 60 s, no think time, one route (`product_detail_etag`: `GET /products/{id}` over a hot set of 200 ids, 3 to 202). Each VU keeps the last ETag per id and sends `If-None-Match` when it has one. On this code it never gets an ETag, so every response is a 200.
+- Procedure: `products:cache-flush` (namespace became 4), warm-up (`warmup.js`), 60 s pause, one discarded replay of `etag.js` (`LABEL=etag-replay`, `RUN=0`: no file, checked with `Test-Path` = False, no screenshot, no number of it is used anywhere), 60 s pause, MySQL counters, run 1, 60 s pause, run 2. The `X-Cache` counters show the cache was warm for the hot ids.
+- `API_RATE_LIMIT_PER_MINUTE` was 100000 during the runs and 60 afterwards (`config:show ratelimit` printed 100000 before and 60 after). `PERF_QUERY_LOG=false` before and after.
+- Dataset (`Show-DataCheck` before and after the runs, identical): users 2003, products 5003 rows (5002 not deleted), orders 300004, order_items 750607, product_images 7570, max product id 5003, 5003 stock rows, stock of products 1 and 2 = 50 and 100, `customers.json` diff empty. The differences from the Step 4 dataset are the rows added by the Step 4 manual and regression checks. `etag.js` reads product details only (ids 3 to 202).
+- Timeline (local time, UTC+3): flush at 21:56:16 (T0). Warm-up done at +48 s. Discarded replay done at +173 s. Run 1 started at 22:00:14 and finished at 22:01:31: 315 s after the flush. Run 2 finished at 22:04:03: 467 s after the flush.
+- The 570 s rule does not apply to this label: `etag.js` reads product details only, whose TTL is 1800 s, and no list page is read, so the 600 s list TTL is not involved. Both elapsed times are far under 1800 s, and `X-Cache` shows MISS 0 in both runs.
+- Validity: both runs `RUN VALID` yes, 0 responses with 429, 0 with 5xx, 0 with `stock:null`, failed rate 0 percent.
+- The p95 rule was WAIVED by the reviewer. The overall p95 of the two runs is 708.22 and 584.58 ms, which differs by 123.64 ms, 19.1 percent of their mean. That is above the 10 percent limit, which normally calls for a third run and the median of three. The reviewer decided not to make a third run. The figures below are therefore the mean of two runs that disagree with each other.
+- The run-to-run spread is large. Requests per second were 35.52 and 42.37 (run 2 was 19.3 percent higher, the difference is 17.6 percent of their mean). p50 differs by 98.04 ms (19.3 percent), p99 by 36.19 ms. The p95 difference is larger than in any earlier label (2.38 ms in the baseline, 7.56 in `step2-indexes`, 49.01 in `step3-pre`, 31.16 in `step4-redis`). Why run 2 was faster was not investigated.
+- Consequence for Step 5: a small effect between `etag-off` and `etag-on` will be hard to separate from noise. With a spread of this size, a difference of 10 percent or less between the two labels cannot be told apart from run-to-run variation, and a smaller overhead (for example from hashing a body of about 415 bytes) cannot be measured with this setup at all.
+- Token check: `eyJ` was searched in `etag-off-1.json` after run 1 and in both files after run 2: nothing found.
+- Evidence files: `perf/results/etag-off-1.json`, `perf/results/etag-off-2.json`, `perf/results/etag-off-docker-stats.txt` (UTF-8 without BOM, converted by the reviewer after the runs, not edited by me; all 304 lines parse). Screenshots (supporting only, saved by the reviewer): `docs/r3-evidence/etag-off-run1.png`, `docs/r3-evidence/etag-off-run2.png`. All untracked until the reviewer commits.
+
+Results (run 1 / run 2 / mean), values in ms unless stated; req/s = requests / 60. The route `product_detail_etag` and the overall figures are the same, because it is the only route.
+- p50: 558.21 / 460.17 / 509.19. p95: 708.22 / 584.58 / 646.40. p99: 763.77 / 727.58 / 745.68. avg: 565.69 / 473.55 / 519.62. max: 838.15 / 846.59.
+- Requests: 2131 / 2542. req/s: 35.52 / 42.37 / 38.95. Response body bytes (measured by the script, body only): 886207 / 1054086 (about 415 bytes per response in both runs).
+- 200 responses: 2131 / 2542. 304 responses: 0 / 0. `ETag` headers seen: 0 / 0. This is what the unchanged code must show.
+- X-Cache: HIT 2131 / 2542, MISS 0 / 0, absent 0 / 0.
+
+MySQL status counters (cumulative, read right before run 1 and after run 2; the performance schema table was truncated right before run 1; the difference covers runs 1 and 2 and the 60 s pause between them)
+- Before: `Com_select` 40056, `Com_stmt_close` 39618, `Com_stmt_execute` 39618, `Com_stmt_prepare` 47307, `Connections` 17703, `Questions` 91136.
+- After: `Com_select` 44731, `Com_stmt_close` 44291, `Com_stmt_execute` 44291, `Com_stmt_prepare` 51980, `Connections` 22405, `Questions` 109863.
+- Difference: `Com_select` +4675, `Com_stmt_execute` +4673, `Com_stmt_close` +4673, `Com_stmt_prepare` +4673, `Connections` +4702, `Questions` +18727.
+- Statement counts by event name: Quit 4683, Execute 4668, change_db 4663, Close stmt 4662, Prepare 4659, set_option 4657, Ping 27, select 2, error 2, truncate 1, show_status 1.
+- Reading: 4673 counted requests and +4673 executes, so about one prepared statement per request, which matches the one query that remains on a detail HIT (the route model binding, see "Query counts per route" in Step 4). `Connections` rose by about one per request. The counters also contain statements that are not counted requests, so the match is approximate. Here the `Com_stmt_prepare` status counter is close to the Prepare events (4673 against 4659), unlike in the earlier labels.
+
+docker stats for the run windows (CPU in percent, 100 percent = one core; memory in MiB)
+- Deviation from the plan: the stats loop was started at 21:58:36, during the discarded replay, instead of right before run 1 (the plan said right before run 1). The file therefore also holds the end of the replay and the pauses. It runs to 22:04:07. Only the run windows are used below.
+- Windows given by the reviewer (local time, UTC+3): run 1 from 22:00:15 to 22:01:31 (11 samples), run 2 from 22:02:32 to 22:04:03 (13 samples). They include idle samples: run 1 has two at the start (app CPU 0.45 and 0.46 percent, before the load began) and one at the end (5.20 percent); run 2 has four after the load ended (app CPU 1.08, 0.68, 0.44 and 1.27 percent). This pulls the means down.
+  - Run 1, mean / peak CPU: `app` 91.82 / 131.08, `mysql` 4.68 / 14.15, `nginx` 1.51 / 2.64, `redis` 2.66 / 3.81, `inventory` 5.26 / 21.97, `inventory-db` 2.25 / 8.20, `k6` 3.91 / 4.82 (8 samples). Memory mean / peak: `app` 144.3 / 149.0, `mysql` 665.5 / 665.8, `redis` 14.6 / 14.7, `inventory` 50.1 / 61.7, `inventory-db` 497.5 / 497.7, `nginx` 8.8 / 8.9, `k6` 23.3 / 24.7.
+  - Run 2, mean / peak CPU: `app` 84.59 / 127.40, `mysql` 4.66 / 11.92, `nginx` 1.35 / 2.32, `redis` 2.58 / 3.45, `inventory` 3.26 / 7.74, `inventory-db` 2.34 / 7.64, `k6` 3.49 / 4.55 (9 samples). Memory mean / peak: `app` 142.6 / 149.1, `mysql` 665.5 / 665.5, `redis` 14.7 / 14.9, `inventory` 47.0 / 48.1, `inventory-db` 497.5 / 497.6, `nginx` 8.8 / 8.9, `k6` 25.0 / 26.3.
+- Loaded samples only (subsets of the same windows, with the window rule of Steps 2 to 4: 62 s to 2 s before the time the summary file was written, 22:01:29 and 22:03:33, so 22:00:27 to 22:01:27 and 22:02:31 to 22:03:31, 8 samples each, all with the load running):
+  - Run 1, mean / peak CPU: `app` 125.49 / 131.08, `mysql` 6.21 / 14.15, `nginx` 2.06 / 2.64, `redis` 3.39 / 3.81, `inventory` 7.22 / 21.97, `inventory-db` 2.19 / 8.20, `k6` 3.91 / 4.82.
+  - Run 2, mean / peak CPU: `app` 122.29 / 127.40, `mysql` 5.96 / 11.92, `nginx` 1.98 / 2.32, `redis` 3.21 / 3.45, `inventory` 4.35 / 7.74, `inventory-db` 2.70 / 7.64, `k6` 3.53 / 4.55.
+- Reading: coarse (about 7 s between samples) and not comparable with the main-scenario figures, because the workload is different (one route, almost no database work). With the load running, `app` sits at about 120 to 130 percent in both runs while `mysql` stays near 6 percent, which fits a PHP-FPM pool of 5 workers that is busy with PHP work and a database that is almost idle behind the cache. `app` CPU is about the same in the faster run 2 and the slower run 1.
+
+How this baseline will be used
+- It was meant as the "before" for `etag-on`. That did not work out: `etag-on` was measured in another sitting on a slower host, so `etag-off` is NOT comparable with `etag-on` (see "Gate 5b measurements"). It stays recorded as the Gate 5a baseline measured before any code (Rule 17). The comparison for the ETag effect uses the control `etag-off2`.
+
+### Implementation and checks before the measurement (Gate 5b)
+
+Order kept (Rule 17): `etag-off` was recorded in this report first, then 10 "before" responses were captured with read-only GETs (production diff still empty), then the code was written.
+
+What changed (all in `Modules/Products` plus `.env.example`)
+- Created `Modules/Products/Http/Middleware/ConditionalEtag.php` with the module generator (`module:make-middleware ConditionalEtag Products`), then filled in.
+  - It runs after the controller, so the hash covers the final body, including the live stock. A stock change gives a new ETag. `updated_at` is not used.
+  - It acts only on a 200 response to a `GET` and only when `products.etag_enabled` is true. Otherwise the response is returned untouched. A 404 from the route binding and a 422 never get an ETag.
+  - `ETag` = `hash('xxh128', body)` (strong validator). `Cache-Control: no-cache, private` (the client may store the response but must revalidate every time, because stock is live; shared caches must not serve it). This is also the header value the route sent before.
+  - The comparison is done by Symfony's `isNotModified()` (weak match, comma list, `*`); a match turns the response into an empty 304.
+- `Modules/Products/routes/api.php`: the middleware is attached to `products.show` only (`route:list` shows it on that route and on no other).
+- `Modules/Products/config/config.php`: `etag_enabled` from `ETAG_ENABLED`, default true. `.env.example`: `ETAG_ENABLED=true` in the `# r3: caching` block. `config("products.etag_enabled")` printed `true` inside the container.
+- Not changed: frozen files, `Modules/Shared`, `bootstrap/app.php`, `services/inventory`, nginx, the k6 scripts, `ProductService`, `CachedProductReader`. No package, no test file.
+
+Deviation from the plan, found by the 304 matrix: GET only, not HEAD
+- The plan said "cacheable methods" (`isMethodCacheable()`, which includes HEAD). The first matrix run showed that a `HEAD` request got an ETag of `99aa06d3014798d86001c324468d497f` (the `xxh128` of an empty string) instead of the GET ETag, and a `HEAD` with a matching `If-None-Match` answered 200 instead of 304. Cause: Laravel empties the body of a `HEAD` response before the middleware runs, so the hash is taken over nothing.
+- Fix: the middleware now acts on `GET` only. `HEAD` answers exactly as it did before the change (200, no `ETag`). Re-checked after the fix (below). HEAD is not used by `etag.js`, so no k6 number is affected.
+
+Checks done by me (read-only GETs; no data written)
+- `php -l` on the changed files: no errors. `pint --test` on the 3 changed files and again on the middleware after the fix: pass. `php artisan test`: 56 passed (507 assertions), before and after the fix.
+- Body comparison, 10 URLs before and after (SHA-256 of the body): `/categories`, `/products?page=1&per_page=15` and the details of products 1, 2, 3, 103 and 5002: 7 of 7 byte-identical. The 3 error bodies (404 for id 99999999, 404 for `abc`, 422 for `per_page=51`) are identical once the per-request `request_id` is normalised.
+- Header comparison (ignoring `Date`, `X-Request-Id` and `X-Cache`): `/categories`, the list and the three errors have identical headers, and the errors carry no `ETag`. The five detail 200 responses have one new header, `ETag`, and nothing else changed. `X-Cache` only differs where a key was a MISS in the first capture (list page 1 and product 5002) and a HIT in the second, because the first capture filled it.
+- 304 matrix on product 103 (after the fix for HEAD), ETag `"01597c0da3ed1997d64e6b3bd7c26fa6"`:
+  - `GET` without `If-None-Match`: 200, 281 bytes, `ETag` present.
+  - `If-None-Match` exact: 304, 0 bytes. With the `W/` prefix: 304. A list `"bogus", <etag>`: 304. `*`: 304.
+  - A wrong ETag: 200 with the body and the current `ETag`.
+  - `HEAD`, with and without `If-None-Match`: 200, no `ETag`, as before the change.
+  - A 404 with `If-None-Match: *`: 404, no `ETag`, no `X-Cache`.
+- Headers kept on the 304: `ETag`, `Cache-Control: no-cache, private`, `X-Cache`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Access-Control-Allow-Origin`, `X-Request-Id` and the five security headers. `Content-Type` is gone (the Symfony rule for a 304), and no `Content-Length` is sent on the 200 either (the response is chunked).
+- The ETag is the hash of the body: the `xxh128` of the 200 body, computed in a separate PHP process, equals the header (`01597c0d...`).
+- The ETag is the same for a MISS and a HIT: product 4999 answered MISS and then HIT with the same ETag (`38e7a194d51db9afc239c4ae7bed2bb5`).
+- State changed by these GETs: cache entries for the requested keys and the normal rate limiter counters. No flush was run and nothing was written to the database.
+- The checks that write data (rename, stock change, `--compressed`, soft delete) were run by the reviewer, see "Manual matrix" below.
+- The code was committed by the reviewer as `cb0d4a3` before the measurements. `git diff --stat` over the production paths against that HEAD is empty, so the measured code is the committed code.
+
+### Gate 5b measurements: `etag-on` and the control `etag-off2`
+
+Why `etag-off2`, and why `etag-off` is not the comparison
+- The first baseline `etag-off` (21:56 sitting) was measured on a faster host state. In the later sittings of `etag-on` and `etag-off2` the host was much slower. In both, the warm-up `setup()` timed out after 60 s (see below), and the discarded replays gave 25.35 req/s (`etag-on` sitting) and 27.10 req/s (`etag-off2` sitting). In the `etag-off` sitting the discarded replay gave 40.05 req/s and the two counted runs gave 35.52 and 42.37 req/s. So `etag-off` is not comparable with `etag-on`. It stays recorded as the Gate 5a baseline, and it is not used in any comparison below.
+- `etag-off2` is the valid control for `etag-on`: the same committed code (HEAD `cb0d4a3`), with `ETAG_ENABLED=false` in `.env`, measured in the same sitting right after `etag-on` (flush at 23:18:12). The reviewer set the value with a helper, and checked it: `config('products.etag_enabled')` printed `false`, and a `GET /products/3` showed no `ETag` header. After the runs the value was set back to `true` (printed `true`, and the same GET showed an `ETag` again). `.env` now holds the line `ETAG_ENABLED=true` (`.env` is not tracked).
+- The label `step5-etag` (main scenario) was not run, see "Decision" below.
+
+What was measured
+- Procedure of both labels: `products:cache-flush` (namespace 5 for `etag-on`, 6 for `etag-off2`), warm-up (`warmup.js`, failed, see below), 60 s pause, one discarded replay of `etag.js` (`LABEL=etag-replay`, `RUN=0`: no file, `Test-Path` printed False both times, no screenshot, not in any table), 60 s pause, MySQL counters, run 1, 60 s pause, run 2. `API_RATE_LIMIT_PER_MINUTE` was 100000 during the runs; the limit was set back to 60 at the end of the sitting and verified (`config:show ratelimit` printed 60, and `.env` shows `API_RATE_LIMIT_PER_MINUTE=60`, `PERF_QUERY_LOG=false`).
+- Dataset (`Show-DataCheck` before each label, identical): users 2003, products 5004 rows (5002 not deleted), orders 300004, order_items 750607, product_images 7570, max product id 5004, 5004 stock rows, stock of products 1 and 2 = 50 and 100, `customers.json` diff empty. The difference from `etag-off` is the soft-deleted tmp product 5004 of the manual matrix. `etag.js` reads product details only (ids 3 to 202).
+- Warm-up failure: in both sittings the `setup()` of `warmup.js` timed out (`setup() execution timed out after 60 seconds`), so no warm-up traffic ran. The cause was not investigated; the host was slower. The discarded replay then filled the hot ids: `X-Cache` MISS = 200 in each replay (one MISS per hot id) and MISS = 0 in all four counted runs. So the counted runs ran on a warm detail cache.
+- Timeline of `etag-on` (local time, UTC+3): flush at 22:41:25 (T0). The failed warm-up ended at +65 s. Replay done at +192 s. Pause 2 done at +252 s. The counters, the stats loop stamp and run 1 started at +406 s, 154 s after the end of pause 2 (not the planned immediate start; not investigated). Run 1 ended at 22:49:39, 494 s after the flush. Run 2 ended at 22:51:47, 622 s after the flush.
+- Timeline of `etag-off2`: flush at 23:18:12 (T0). Failed warm-up ended at +66 s. Replay done at +192 s. Pause 2 done at +252 s. Stats loop stamp at +256 s. Run 1 ended at 23:23:48, 335 s after the flush. Run 2 ended at 23:25:56, 464 s after the flush.
+- The 570 s rule does not apply to these labels: `etag.js` reads product details only (TTL 1800 s) and no list page, and every elapsed time is under 1800 s. `X-Cache` shows MISS 0 in all counted runs.
+- Validity: all four counted runs `RUN VALID` yes, 0 responses with 429, 0 with 5xx, 0 with `stock:null`, failed rate 0 percent.
+- p95 rule WAIVED (the reviewer keeps two runs, the same decision as for `etag-off`): the two `etag-on` runs differ by 16.1 percent (1144.54 and 974.37 ms, 170.17 ms apart) and the two `etag-off2` runs by 15.4 percent (966.52 and 1127.76 ms, 161.24 ms apart). Both are above the 10 percent limit. The figures below are means of two runs that disagree with each other.
+- Token check: `eyJ` was searched in `etag-on-1.json` after run 1 and in both `etag-on` files after run 2, and in `etag-off2-1.json` after run 1: nothing found. I also searched all four JSON files: 0 matches.
+- Evidence files: `perf/results/etag-on-1.json`, `etag-on-2.json`, `etag-on-docker-stats.txt`, `perf/results/etag-off2-1.json`, `etag-off2-2.json`, `etag-off2-docker-stats.txt` (UTF-8 without BOM, not edited). Screenshots (supporting only, saved by the reviewer): `docs/r3-evidence/etag-on-run1.png`, `etag-on-run2.png`, `etag-off2-run1.png`, `etag-off2-run2.png`. All untracked until the reviewer commits.
+
+Results (run 1 / run 2 / mean), values in ms unless stated; req/s = requests / 60. The route `product_detail_etag` and the overall figures are the same, because it is the only route.
+- `etag-on` (ETag enabled)
+  - p50: 759.55 / 725.14 / 742.35. p95: 1144.54 / 974.37 / 1059.46. p99: 2197.39 / 1282.98 / 1740.19. avg: 816.23 / 750.33 / 783.28. max: 2655.70 / 1552.43.
+  - Requests: 1478 / 1607. req/s: 24.63 / 26.78 / 25.71. Response body bytes (script, body only): 511467 / 547798.
+  - 200 responses: 1234 / 1320. 304 responses: 244 / 287. `ETag` headers seen: 1234 / 1320 (equal to the 200 count). X-Cache: HIT 1478 / 1607, MISS 0 / 0.
+- `etag-off2` (ETag disabled by `ETAG_ENABLED=false`)
+  - p50: 721.75 / 710.06 / 715.91. p95: 966.52 / 1127.76 / 1047.14. p99: 1369.04 / 1458.23 / 1413.64. avg: 744.01 / 756.89 / 750.45. max: 1915.09 / 2290.52.
+  - Requests: 1621 / 1595. req/s: 27.02 / 26.58 / 26.80. Response body bytes: 671694 / 661431.
+  - 200 responses: 1621 / 1595. 304 responses: 0 / 0. `ETag` headers seen: 0 / 0. X-Cache: HIT 1621 / 1595, MISS 0 / 0.
+- Run-to-run differences (run 1 against run 2): `etag-on` p50 34.41 ms, p95 170.17 ms, p99 914.41 ms, req/s 2.15. `etag-off2` p50 11.69 ms, p95 161.24 ms, p99 89.19 ms, req/s 0.43.
+
+Comparison `etag-off2` -> `etag-on` (mean of 2 runs each; same rule as before: the change of the means is compared with the larger of the two run-to-run differences, a rough guide and not a statistical test)
+- p50: 715.91 -> 742.35 ms (+26.44 ms, +3.7%). The larger run-to-run difference is 34.41 ms. Within.
+- p95: 1047.14 -> 1059.46 ms (+12.32 ms, +1.2%). Larger difference 170.17 ms. Within.
+- p99: 1413.64 -> 1740.19 ms (+326.55 ms, +23.1%). Larger difference 914.41 ms (the `etag-on` p99 values are 2197.39 and 1282.98). Within.
+- avg: 750.45 -> 783.28 ms (+32.83 ms, +4.4%). Larger difference 65.90 ms. Within.
+- req/s: 26.80 -> 25.71 (-1.09, -4.1%). Larger difference 2.15. Within.
+- Response body bytes per counted request (both runs of a label pooled): 414.5 -> 343.4 (-17.2%). Per 200 response the body is about 415 bytes in both labels (414.4 and 414.7 for `etag-off2`, 414.5 and 415.0 for `etag-on`), and a 304 has 0 bytes.
+- 304 share of the `etag-on` requests: 244 of 1478 (16.5%) and 287 of 1607 (17.9%), 17.2% pooled.
+
+Reading: what the data supports and what it does not
+- The ETag works under load. 304 responses were sent for 16.5 and 17.9 percent of the requests, the number of `ETag` headers equals the number of 200 responses, and the response body bytes per request fell by 17.2 percent. These figures do not depend on the host speed.
+- The 304 share is set by the scenario and not by the server. In `etag.js` the first request of each (VU, id) pair is always a 200, because each VU starts with an empty ETag map. With 200 hot ids and about 77 requests per VU in a run, uniform draws would give about 17 percent repeats. That is what was measured. A faster host (more requests per VU) would give a higher 304 share. This is an approximation check on the script design, not a measurement.
+- No server-time effect can be shown or excluded. Every difference between `etag-off2` and `etag-on` (p50 +3.7%, p95 +1.2%, p99 +23.1%, avg +4.4%, req/s -4.1%) is smaller than the larger run-to-run difference of the two labels. The direction is slightly worse with the ETag on for every metric, but this is inside the noise. The spread of two runs of the same label is 15 to 16 percent in p95, so an overhead of the hashing of a 415-byte body (microseconds) is far below what this setup can resolve.
+- A 304 does not make the server cheaper by itself. The controller still runs, so each 304 request still pays the rate limiter, the route binding query, the cache read and the `GetStock` gRPC call (see the MySQL counters: one statement per request). The saving is network bytes only. Throughput is limited by the same PHP-FPM pool of 5 workers either way.
+- Replay figures are not used as results. They are quoted only to document the host speed and the cache fill: `etag-on` sitting replay 25.35 req/s and MISS 200, `etag-off2` sitting replay 27.10 req/s and MISS 200 (and 40.05 req/s in the `etag-off` sitting).
+
+MySQL status counters (cumulative)
+- `etag-on`, read right before run 1 and after run 2 (the performance schema table was truncated right before run 1; the difference includes the 154 s gap and the 60 s pause between runs):
+  - Before: `Com_select` 47149, `Com_stmt_close` 46700, `Com_stmt_execute` 46700, `Com_stmt_prepare` 54679, `Connections` 24307, `Questions` 117505.
+  - After: `Com_select` 50236, `Com_stmt_close` 49785, `Com_stmt_execute` 49785, `Com_stmt_prepare` 57764, `Connections` 27430, `Questions` 129889.
+  - Difference: `Com_select` +3087, `Com_stmt_execute` +3085, `Com_stmt_close` +3085, `Com_stmt_prepare` +3085, `Connections` +3123, `Questions` +12384.
+  - Statement counts by event name: Quit 3117, Execute 3083, change_db 3082, Prepare 3082, set_option 3080, Close stmt 3080, Ping 36, select 2, error 2, truncate 1, show_status 1.
+  - Reading: 3085 counted requests and +3085 executes, so one prepared statement per request, 304 responses included (the route model binding runs before the middleware). The same ratio was seen in `etag-off` (+4673 executes for 4673 requests).
+- `etag-off2`: only the "before" counters were read (`Com_select` 52695, `Com_stmt_close` 52238, `Com_stmt_execute` 52238, `Com_stmt_prepare` 60506, `Connections` 29328, `Questions` 137681). The "after" counters were not read, so there is no difference for this label and no counter comparison between the two labels.
+
+docker stats for the run windows (CPU in percent, 100 percent = one core; memory in MiB; loaded samples, 8 per run, windows given by the reviewer; local time, UTC+3)
+- Deviations: the `etag-on` stats loop was started early, at 22:41:23 (before the flush at 22:41:25), instead of right before run 1 (the stamp for it is 22:48:11). The file therefore also holds the flush, the failed warm-up, the replay, the pauses and the 154 s gap (it runs to 22:51:49; one line at 22:42:30 holds `--` placeholders and is not a sample). The `etag-off2` loop was started correctly (stamp 23:22:28, first sample 23:22:32). Neither file was edited. Only the windows below are used.
+- `etag-on`, run 1 (22:48:35 to 22:49:35, first sample 22:48:37.0, last 22:49:28.8), mean / peak CPU: `app` 126.07 / 138.56, `mysql` 6.57 / 15.56, `nginx` 1.69 / 1.97, `redis` 5.19 / 15.02, `inventory` 4.44 / 11.08, `inventory-db` 2.80 / 12.22, `k6` 4.07 / 4.49. Memory mean: `app` 165.0, `mysql` 667.2, `redis` 13.3, `inventory` 48.0, `inventory-db` 497.6, `nginx` 8.9, `k6` 23.9.
+- `etag-on`, run 2 (22:50:41 to 22:51:41, first 22:50:43.6, last 22:51:34.7), mean / peak CPU: `app` 117.86 / 122.99, `mysql` 7.12 / 14.54, `nginx` 1.76 / 1.89, `redis` 4.19 / 9.64, `inventory` 4.03 / 8.82, `inventory-db` 3.43 / 10.25, `k6` 3.99 / 5.41. Memory mean: `app` 164.3, `mysql` 667.3, `redis` 13.3, `inventory` 49.2, `inventory-db` 497.9, `nginx` 8.9, `k6` 26.1.
+- `etag-off2`, run 1 (23:22:42 to 23:23:42, first 23:22:46.8, last 23:23:37.8), mean / peak CPU: `app` 117.77 / 121.41, `mysql` 5.99 / 13.60, `nginx` 1.84 / 2.12, `redis` 4.38 / 10.16, `inventory` 3.80 / 8.88, `inventory-db` 2.44 / 10.98, `k6` 4.01 / 5.32. Memory mean: `app` 165.2, `mysql` 668.9, `redis` 13.3, `inventory` 50.0, `inventory-db` 497.6, `nginx` 8.9, `k6` 26.3.
+- `etag-off2`, run 2 (23:24:50 to 23:25:50, first 23:24:53.3, last 23:25:44.4), mean / peak CPU: `app` 119.32 / 126.13, `mysql` 7.31 / 14.79, `nginx` 1.76 / 2.11, `redis` 4.24 / 9.73, `inventory` 4.36 / 9.74, `inventory-db` 2.34 / 10.12, `k6` 4.19 / 5.73. Memory mean: `app` 164.5, `mysql` 668.9, `redis` 13.3, `inventory` 50.2, `inventory-db` 497.6, `nginx` 8.9, `k6` 24.7.
+- Reading: coarse (about 7 s between samples) and not used as evidence for the ETag. `app` is at about 118 to 126 percent in all four runs, which fits a busy PHP-FPM pool of 5 workers, and `mysql` stays at 6 to 7 percent. The `etag-on` run 1 `app` mean (126.07) is higher than the other three (117.77 to 119.32); with 8 samples and a first sample of 138.56 this is not a finding. The `etag-on` run 1 is also the run with the highest p99 (2197.39 ms).
+
+Manual matrix (the reviewer's terminal; temporary product `tmp-etag-check`, id 5004, created through the admin API; all behaved as expected)
+- `GET` without `If-None-Match`: 200, `ETag: "692e07edfe95b40ea40846e4b1a6429f"`, `X-Cache: MISS`, 259 bytes. The same ETag sent back: 304, 0 bytes, `X-Cache: HIT`, the same `ETag`.
+- With the `W/` prefix: 304. With the list `"bogus", <etag>`: 304. With `*`: 304. All with 0 bytes.
+- Admin rename (`PATCH`, HTTP 200): the new `ETag` is `"e548cd80ff512fb63c512cbc25fec716"` (different). The old ETag now gets a 200 with the new body (267 bytes). The new ETag gets a 304.
+- Stock change (`PATCH .../stock`, adjustment +3, HTTP 200): the new `ETag` is `"e99a9a6ca2a72c4c8da971e7ffa1b2c1"` (different), `X-Cache` stays HIT (stock is live). The previous ETag gets a 200 (267 bytes), the new one a 304.
+- `--compressed`: 200, the same ETag, no `Content-Encoding` (gzip is off).
+- Soft delete (`DELETE`, HTTP 204): `GET` answers 404 with no `ETag` and no `X-Cache` (145 bytes), also when `If-None-Match` carries the last ETag.
+- First run of the pre-flight line `tinker --execute='var_export(config("products.etag_enabled"));'` failed with `Undefined constant "products"`. This was a quoting problem of that command line in Windows PowerShell (my printed script), not the application. The same command with the quotes swapped printed `true`.
+
+Regression checks after the k6 runs (the limit was back at 60 and verified before them)
+- `php artisan test`: 56 passed (507 assertions), 30.23 s (slower host).
+- `security:proof`: 15 PASS, 0 FAIL (21 requests). The order of customer B was #300005 (created and cancelled by the proof).
+- `orders:race-test --product=1 --count=10`: PASS, one 201 and nine 409. Product 1 stock: read 50, set to 1 (HTTP 200), 0 after the test, restored to 50 (HTTP 200). Final reads: API 50 and `inventory-db` 50.
+- `products:cache-flush` run after the checks (namespace 7).
+- Data check afterwards: users 2003, products 5004 (5002 not deleted), orders 300006 (max id 300006), order_items 750609, product_images 7570, 5004 stock rows, stock of products 1 and 2 = 50 and 100, `customers.json` diff empty. The two new orders are #300005 (made and cancelled by `security:proof`) and the pending order of the race test (#300006 by elimination, since the order count and the max id are both 300006).
+
+Decision: `step5-etag` (main scenario) was NOT run
+- Deviation from the plan, by decision of the reviewer. Reasons: `baseline.js` sends no `If-None-Match`, so the ETag can change nothing there except the hashing cost, and `etag-on` against `etag-off2` already bounds that cost. The host was also much slower in the evening sittings than in the Step 4 session, so a comparison with `step4-redis` would be misleading (it would mostly measure the host).
+- So there is no `step5-etag` line under the routes and no main-scenario result for Step 5.
+
+Leftovers (nothing was deleted; the reviewer decides)
+- Product id 5004 (`tmp-etag-check-renamed`, soft-deleted at 2026-11-16 19:29:30 UTC) and its stock row of 8 in `inventory-db`. It has no image.
+- Earlier leftovers still there: product id 5003, its image 7570 and file, its stock row, and `tmp-cache-check.png` in the Windows temp folder.
+- Cache entries of the earlier namespaces stay in Redis and expire by their TTLs.
+
+Conclusion for Step 5
+- Done: conditional GET with a strong ETag on `GET /products/{id}`, switch `ETAG_ENABLED`, 304 with an empty body, correct behaviour in the manual matrix, no regression.
+- Measured: the 304 share (about 17 percent in this scenario), the response body saving per request (17.2 percent), and one statement per request on a 304 too.
+- Not shown, not excluded: any effect on server time or throughput. Every difference is inside the run-to-run spread, and the p95 rule was waived for all `etag.js` labels.
+- Known limits: two runs per label, a waived p95 rule, a slow host with a failed warm-up in the evening sittings, `etag-off` not comparable with `etag-on`, no main-scenario run.
 
 ## Step 6: Read Replica
 
