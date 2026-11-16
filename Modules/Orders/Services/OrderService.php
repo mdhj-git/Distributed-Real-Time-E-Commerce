@@ -4,6 +4,7 @@ namespace Modules\Orders\Services;
 
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -114,11 +115,34 @@ class OrderService
     public function paginate(?int $ownerId, int $perPage): LengthAwarePaginator
     {
         // The query itself is filtered by owner, so another user's rows are never loaded.
-        return Order::query()
-            ->with('items')
-            ->when($ownerId !== null, fn ($query) => $query->where('user_id', $ownerId))
-            ->orderByDesc('id')
-            ->paginate($perPage);
+        $filtered = Order::query()
+            ->when($ownerId !== null, fn ($query) => $query->where('user_id', $ownerId));
+
+        $page = Paginator::resolveCurrentPage();
+
+        // Same count query as Eloquent's paginate().
+        $total = $filtered->toBase()->getCountForPagination();
+
+        if ($total === 0) {
+            $orders = new Collection;
+        } else {
+            // Deferred join: the sub-query skips the offset over ids only (a covering index scan that never
+            // reads whole rows), then only the page's rows are fetched by primary key. With a plain
+            // `order by id desc limit N offset M` MySQL reads every skipped row in full.
+            $ids = (clone $filtered)->select('id')->orderByDesc('id')->forPage($page, $perPage);
+
+            $orders = Order::query()
+                ->select('orders.*')
+                ->joinSub($ids, 'page_ids', 'page_ids.id', '=', 'orders.id')
+                ->with('items')
+                ->orderByDesc('orders.id')
+                ->get();
+        }
+
+        return new LengthAwarePaginator($orders, $total, $perPage, $page, [
+            'path' => Paginator::resolveCurrentPath(),
+            'pageName' => 'page',
+        ]);
     }
 
     public function changeStatus(int $orderId, OrderStatus $to): Order

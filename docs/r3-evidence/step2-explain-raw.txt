@@ -1,0 +1,411 @@
+Requirement 3, Step 2, Stage A: raw EXPLAIN and EXPLAIN ANALYZE output BEFORE any change.
+Database: ecommerce (MySQL 8.4.13), dataset regenerated with perf:seed (seed 42): orders 300000, order_items 750603, products 5002, product_images 7569.
+Method: queries rebuilt with literal values from the temporary counter (heavy fake customer id 4). Each EXPLAIN ANALYZE ran twice, "first" and "warm". Both are noisy single runs.
+The counter passes had already read the same pages, so "first" is not a cold-cache run. MySQL was not restarted. ANALYZE TABLE was not run.
+Part 1 = the 17 queries of the read routes. Part 2 = deferred-join variants (tested only, the application code was not changed at that time).
+Contents are SQL text, plans and timings only. No credentials, no tokens.
+
+================================================================ PART 1: read-route queries
+################ Q1 admin count(*) orders
+SQL: select count(*) as aggregate from orders
+---- EXPLAIN
++----+-------------+--------+------------+-------+---------------+-------------------------+---------+------+--------+----------+-------------+
+| id | select_type | table  | partitions | type  | possible_keys | key                     | key_len | ref  | rows   | filtered | Extra       |
++----+-------------+--------+------------+-------+---------------+-------------------------+---------+------+--------+----------+-------------+
+|  1 | SIMPLE      | orders | NULL       | index | NULL          | orders_user_id_id_index | 16      | NULL | 298146 |   100.00 | Using index |
++----+-------------+--------+------------+-------+---------------+-------------------------+---------+------+--------+----------+-------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Count rows in orders  (actual time=30.8..30.8 rows=1 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Count rows in orders  (actual time=30..30 rows=1 loops=1)
+
+################ Q2a admin list offset 0 (page 1)
+SQL: select * from orders order by id desc limit 20 offset 0
+---- EXPLAIN
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+---------------------+
+| id | select_type | table  | partitions | type  | possible_keys | key     | key_len | ref  | rows | filtered | Extra               |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+---------------------+
+|  1 | SIMPLE      | orders | NULL       | index | NULL          | PRIMARY | 8       | NULL |   20 |   100.00 | Backward index scan |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+---------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit: 20 row(s)  (cost=0.0319 rows=20) (actual time=0.925..0.936 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY (reverse)  (cost=0.0319 rows=20) (actual time=0.0299..0.0409 rows=20 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit: 20 row(s)  (cost=0.0319 rows=20) (actual time=0.0206..0.0319 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY (reverse)  (cost=0.0319 rows=20) (actual time=0.0194..0.0296 rows=20 loops=1)
+
+################ Q2b admin list offset 5980 (page 300)
+SQL: select * from orders order by id desc limit 20 offset 5980
+---- EXPLAIN
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+---------------------+
+| id | select_type | table  | partitions | type  | possible_keys | key     | key_len | ref  | rows | filtered | Extra               |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+---------------------+
+|  1 | SIMPLE      | orders | NULL       | index | NULL          | PRIMARY | 8       | NULL | 6000 |   100.00 | Backward index scan |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+---------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit/Offset: 20/5980 row(s)  (cost=21.6 rows=20) (actual time=3.1..3.11 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY (reverse)  (cost=21.6 rows=6000) (actual time=0.181..2.9 rows=6000 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit/Offset: 20/5980 row(s)  (cost=21.6 rows=20) (actual time=3.13..3.13 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY (reverse)  (cost=21.6 rows=6000) (actual time=0.179..2.93 rows=6000 loops=1)
+
+################ Q2c admin list offset 299980 (last page)
+SQL: select * from orders order by id desc limit 20 offset 299980
+---- EXPLAIN
++----+-------------+--------+------------+-------+---------------+---------+---------+------+--------+----------+---------------------+
+| id | select_type | table  | partitions | type  | possible_keys | key     | key_len | ref  | rows   | filtered | Extra               |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+--------+----------+---------------------+
+|  1 | SIMPLE      | orders | NULL       | index | NULL          | PRIMARY | 8       | NULL | 298146 |   100.00 | Backward index scan |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+--------+----------+---------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit/Offset: 20/299980 row(s)  (cost=30288 rows=0) (actual time=158..158 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY (reverse)  (cost=30288 rows=298146) (actual time=0.176..148 rows=300000 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit/Offset: 20/299980 row(s)  (cost=30288 rows=0) (actual time=150..150 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY (reverse)  (cost=30288 rows=298146) (actual time=0.173..140 rows=300000 loops=1)
+
+################ Q3a order_items for 20 orders (page 1 ids)
+SQL: select * from order_items where order_id in (299981, 299982, 299983, 299984, 299985, 299986, 299987, 299988, 299989, 299990, 299991, 299992,...
+---- EXPLAIN
++----+-------------+-------------+------------+-------+------------------------------+------------------------------+---------+------+------+----------+---------------------------------------+
+| id | select_type | table       | partitions | type  | possible_keys                | key                          | key_len | ref  | rows | filtered | Extra                                 |
++----+-------------+-------------+------------+-------+------------------------------+------------------------------+---------+------+------+----------+---------------------------------------+
+|  1 | SIMPLE      | order_items | NULL       | range | order_items_order_id_foreign | order_items_order_id_foreign | 8       | NULL |   46 |   100.00 | Using index condition; Using filesort |
++----+-------------+-------------+------------+-------+------------------------------+------------------------------+---------+------+------+----------+---------------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Sort: order_items.product_id  (cost=73.4 rows=46) (actual time=0.167..0.174 rows=46 loops=1)
+    -> Index range scan on order_items using order_items_order_id_foreign over (order_id = 299981) OR (order_id = 299982) OR (18 more), with index condition: (order_items.order_id in (299981,299982,299983,299984,299985,299986,299987,299988,299989,299990,299991,299992,299993,299994,299995,299996,299997,299998,299999,300000))  (cost=73.4 rows=46) (actual time=0.0296..0.139 rows=46 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Sort: order_items.product_id  (cost=73.4 rows=46) (actual time=0.254..0.262 rows=46 loops=1)
+    -> Index range scan on order_items using order_items_order_id_foreign over (order_id = 299981) OR (order_id = 299982) OR (18 more), with index condition: (order_items.order_id in (299981,299982,299983,299984,299985,299986,299987,299988,299989,299990,299991,299992,299993,299994,299995,299996,299997,299998,299999,300000))  (cost=73.4 rows=46) (actual time=0.0214..0.224 rows=46 loops=1)
+
+################ Q3b order_items for 20 orders (last page ids)
+SQL: select * from order_items where order_id in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20) order by product_id asc
+---- EXPLAIN
++----+-------------+-------------+------------+-------+------------------------------+------------------------------+---------+------+------+----------+---------------------------------------+
+| id | select_type | table       | partitions | type  | possible_keys                | key                          | key_len | ref  | rows | filtered | Extra                                 |
++----+-------------+-------------+------------+-------+------------------------------+------------------------------+---------+------+------+----------+---------------------------------------+
+|  1 | SIMPLE      | order_items | NULL       | range | order_items_order_id_foreign | order_items_order_id_foreign | 8       | NULL |   50 |   100.00 | Using index condition; Using filesort |
++----+-------------+-------------+------------+-------+------------------------------+------------------------------+---------+------+------+----------+---------------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Sort: order_items.product_id  (cost=78.1 rows=50) (actual time=0.146..0.153 rows=50 loops=1)
+    -> Index range scan on order_items using order_items_order_id_foreign over (order_id = 1) OR (order_id = 2) OR (18 more), with index condition: (order_items.order_id in (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20))  (cost=78.1 rows=50) (actual time=0.0206..0.125 rows=50 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Sort: order_items.product_id  (cost=78.1 rows=50) (actual time=0.143..0.15 rows=50 loops=1)
+    -> Index range scan on order_items using order_items_order_id_foreign over (order_id = 1) OR (order_id = 2) OR (18 more), with index condition: (order_items.order_id in (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20))  (cost=78.1 rows=50) (actual time=0.0188..0.122 rows=50 loops=1)
+
+################ Q4 customer count (user 4)
+SQL: select count(*) as aggregate from orders where user_id = 4
+---- EXPLAIN
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+-------------+
+| id | select_type | table  | partitions | type | possible_keys           | key                     | key_len | ref   | rows  | filtered | Extra       |
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+-------------+
+|  1 | SIMPLE      | orders | NULL       | ref  | orders_user_id_id_index | orders_user_id_id_index | 8       | const | 32732 |   100.00 | Using index |
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+-------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Aggregate: count(0)  (cost=6571 rows=1) (actual time=3.21..3.21 rows=1 loops=1)
+    -> Covering index lookup on orders using orders_user_id_id_index (user_id=4)  (cost=3297 rows=32732) (actual time=0.0705..2.54 rows=16478 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Aggregate: count(0)  (cost=6571 rows=1) (actual time=3.27..3.27 rows=1 loops=1)
+    -> Covering index lookup on orders using orders_user_id_id_index (user_id=4)  (cost=3297 rows=32732) (actual time=0.0787..2.59 rows=16478 loops=1)
+
+################ Q5a customer list offset 0 (user 4)
+SQL: select * from orders where user_id = 4 order by id desc limit 15 offset 0
+---- EXPLAIN
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+---------------------+
+| id | select_type | table  | partitions | type | possible_keys           | key                     | key_len | ref   | rows  | filtered | Extra               |
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+---------------------+
+|  1 | SIMPLE      | orders | NULL       | ref  | orders_user_id_id_index | orders_user_id_id_index | 8       | const | 32732 |   100.00 | Backward index scan |
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+---------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit: 15 row(s)  (cost=4692 rows=15) (actual time=0.886..0.891 rows=15 loops=1)
+    -> Index lookup on orders using orders_user_id_id_index (user_id=4) (reverse)  (cost=4692 rows=32732) (actual time=0.885..0.889 rows=15 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit: 15 row(s)  (cost=4692 rows=15) (actual time=0.919..0.923 rows=15 loops=1)
+    -> Index lookup on orders using orders_user_id_id_index (user_id=4) (reverse)  (cost=4692 rows=32732) (actual time=0.918..0.922 rows=15 loops=1)
+
+################ Q5b customer list last page (user 4, offset 16470)
+SQL: select * from orders where user_id = 4 order by id desc limit 15 offset 16470
+---- EXPLAIN
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+---------------------+
+| id | select_type | table  | partitions | type | possible_keys           | key                     | key_len | ref   | rows  | filtered | Extra               |
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+---------------------+
+|  1 | SIMPLE      | orders | NULL       | ref  | orders_user_id_id_index | orders_user_id_id_index | 8       | const | 32732 |   100.00 | Backward index scan |
++----+-------------+--------+------------+------+-------------------------+-------------------------+---------+-------+-------+----------+---------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit/Offset: 15/16470 row(s)  (cost=4692 rows=15) (actual time=30.7..30.7 rows=8 loops=1)
+    -> Index lookup on orders using orders_user_id_id_index (user_id=4) (reverse)  (cost=4692 rows=32732) (actual time=0.846..30.1 rows=16478 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit/Offset: 15/16470 row(s)  (cost=4692 rows=15) (actual time=32.5..32.5 rows=8 loops=1)
+    -> Index lookup on orders using orders_user_id_id_index (user_id=4) (reverse)  (cost=4692 rows=32732) (actual time=0.973..31.9 rows=16478 loops=1)
+
+################ Q6 products count
+SQL: select count(*) as aggregate from products where products.deleted_at is null
+---- EXPLAIN
++----+-------------+----------+------------+------+---------------+------+---------+------+------+----------+-------------+
+| id | select_type | table    | partitions | type | possible_keys | key  | key_len | ref  | rows | filtered | Extra       |
++----+-------------+----------+------------+------+---------------+------+---------+------+------+----------+-------------+
+|  1 | SIMPLE      | products | NULL       | ALL  | NULL          | NULL | NULL    | NULL | 4982 |    10.00 | Using where |
++----+-------------+----------+------------+------+---------------+------+---------+------+------+----------+-------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Aggregate: count(0)  (cost=572 rows=1) (actual time=1.47..1.47 rows=1 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=522 rows=498) (actual time=0.0268..1.24 rows=5002 loops=1)
+        -> Table scan on products  (cost=522 rows=4982) (actual time=0.0258..0.9 rows=5002 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Aggregate: count(0)  (cost=572 rows=1) (actual time=1.46..1.46 rows=1 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=522 rows=498) (actual time=0.0244..1.25 rows=5002 loops=1)
+        -> Table scan on products  (cost=522 rows=4982) (actual time=0.0234..0.917 rows=5002 loops=1)
+
+################ Q7a products list offset 0
+SQL: select * from products where products.deleted_at is null order by id desc limit 15 offset 0
+---- EXPLAIN
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+| id | select_type | table    | partitions | type  | possible_keys | key     | key_len | ref  | rows | filtered | Extra                            |
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+|  1 | SIMPLE      | products | NULL       | index | NULL          | PRIMARY | 8       | NULL |   15 |    10.00 | Using where; Backward index scan |
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit: 15 row(s)  (cost=1.42 rows=1.5) (actual time=0.0136..0.0255 rows=15 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=1.42 rows=1.5) (actual time=0.0131..0.0237 rows=15 loops=1)
+        -> Index scan on products using PRIMARY (reverse)  (cost=1.42 rows=15) (actual time=0.0123..0.0222 rows=15 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit: 15 row(s)  (cost=1.42 rows=1.5) (actual time=0.0137..0.0268 rows=15 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=1.42 rows=1.5) (actual time=0.0131..0.0255 rows=15 loops=1)
+        -> Index scan on products using PRIMARY (reverse)  (cost=1.42 rows=15) (actual time=0.0121..0.0234 rows=15 loops=1)
+
+################ Q7b products list offset 4485 (page 300)
+SQL: select * from products where products.deleted_at is null order by id desc limit 15 offset 4485
+---- EXPLAIN
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+| id | select_type | table    | partitions | type  | possible_keys | key     | key_len | ref  | rows | filtered | Extra                            |
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+|  1 | SIMPLE      | products | NULL       | index | NULL          | PRIMARY | 8       | NULL | 4500 |    10.00 | Using where; Backward index scan |
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit/Offset: 15/4485 row(s)  (cost=468 rows=0) (actual time=3.8..3.81 rows=15 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=468 rows=450) (actual time=0.0132..3.55 rows=4500 loops=1)
+        -> Index scan on products using PRIMARY (reverse)  (cost=468 rows=4500) (actual time=0.0124..3.21 rows=4500 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit/Offset: 15/4485 row(s)  (cost=468 rows=0) (actual time=3.28..3.3 rows=15 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=468 rows=450) (actual time=0.0145..3.05 rows=4500 loops=1)
+        -> Index scan on products using PRIMARY (reverse)  (cost=468 rows=4500) (actual time=0.0135..2.71 rows=4500 loops=1)
+
+################ Q8a products count category_id=1
+SQL: select count(*) as aggregate from products where category_id = 1 and products.deleted_at is null
+---- EXPLAIN
++----+-------------+----------+------------+------+------------------------------+------------------------------+---------+-------+------+----------+-------------+
+| id | select_type | table    | partitions | type | possible_keys                | key                          | key_len | ref   | rows | filtered | Extra       |
++----+-------------+----------+------------+------+------------------------------+------------------------------+---------+-------+------+----------+-------------+
+|  1 | SIMPLE      | products | NULL       | ref  | products_category_id_foreign | products_category_id_foreign | 8       | const | 1675 |    10.00 | Using where |
++----+-------------+----------+------------+------+------------------------------+------------------------------+---------+-------+------+----------+-------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Aggregate: count(0)  (cost=106 rows=1) (actual time=2.13..2.13 rows=1 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=89.5 rows=168) (actual time=0.139..2.04 rows=1675 loops=1)
+        -> Index lookup on products using products_category_id_foreign (category_id=1)  (cost=89.5 rows=1675) (actual time=0.138..1.93 rows=1675 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Aggregate: count(0)  (cost=106 rows=1) (actual time=4.09..4.09 rows=1 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=89.5 rows=168) (actual time=0.225..3.99 rows=1675 loops=1)
+        -> Index lookup on products using products_category_id_foreign (category_id=1)  (cost=89.5 rows=1675) (actual time=0.224..3.78 rows=1675 loops=1)
+
+################ Q8b products list category_id=1
+SQL: select * from products where category_id = 1 and products.deleted_at is null order by id desc limit 15 offset 0
+---- EXPLAIN
++----+-------------+----------+------------+------+------------------------------+------------------------------+---------+-------+------+----------+----------------------------------+
+| id | select_type | table    | partitions | type | possible_keys                | key                          | key_len | ref   | rows | filtered | Extra                            |
++----+-------------+----------+------------+------+------------------------------+------------------------------+---------+-------+------+----------+----------------------------------+
+|  1 | SIMPLE      | products | NULL       | ref  | products_category_id_foreign | products_category_id_foreign | 8       | const | 1675 |    10.00 | Using where; Backward index scan |
++----+-------------+----------+------------+------+------------------------------+------------------------------+---------+-------+------+----------+----------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit: 15 row(s)  (cost=89.5 rows=15) (actual time=0.0154..0.0428 rows=15 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=89.5 rows=168) (actual time=0.0147..0.0411 rows=15 loops=1)
+        -> Index lookup on products using products_category_id_foreign (category_id=1) (reverse)  (cost=89.5 rows=1675) (actual time=0.0138..0.0391 rows=15 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit: 15 row(s)  (cost=89.5 rows=15) (actual time=0.0128..0.0394 rows=15 loops=1)
+    -> Filter: (products.deleted_at is null)  (cost=89.5 rows=168) (actual time=0.0123..0.0378 rows=15 loops=1)
+        -> Index lookup on products using products_category_id_foreign (category_id=1) (reverse)  (cost=89.5 rows=1675) (actual time=0.0115..0.0362 rows=15 loops=1)
+
+################ Q9a products count search=Premium
+SQL: select count(*) as aggregate from products where name like '%Premium%' and products.deleted_at is null
+---- EXPLAIN
++----+-------------+----------+------------+------+---------------+------+---------+------+------+----------+-------------+
+| id | select_type | table    | partitions | type | possible_keys | key  | key_len | ref  | rows | filtered | Extra       |
++----+-------------+----------+------------+------+---------------+------+---------+------+------+----------+-------------+
+|  1 | SIMPLE      | products | NULL       | ALL  | NULL          | NULL | NULL    | NULL | 4982 |     1.11 | Using where |
++----+-------------+----------+------------+------+---------------+------+---------+------+------+----------+-------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Aggregate: count(0)  (cost=528 rows=1) (actual time=2.17..2.17 rows=1 loops=1)
+    -> Filter: ((products.`name` like '%Premium%') and (products.deleted_at is null))  (cost=522 rows=55.4) (actual time=0.0334..2.15 rows=488 loops=1)
+        -> Table scan on products  (cost=522 rows=4982) (actual time=0.0281..1.08 rows=5002 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Aggregate: count(0)  (cost=528 rows=1) (actual time=2.22..2.22 rows=1 loops=1)
+    -> Filter: ((products.`name` like '%Premium%') and (products.deleted_at is null))  (cost=522 rows=55.4) (actual time=0.0313..2.2 rows=488 loops=1)
+        -> Table scan on products  (cost=522 rows=4982) (actual time=0.026..1.11 rows=5002 loops=1)
+
+################ Q9b products list search=Premium
+SQL: select * from products where name like '%Premium%' and products.deleted_at is null order by id desc limit 15 offset 0
+---- EXPLAIN
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+| id | select_type | table    | partitions | type  | possible_keys | key     | key_len | ref  | rows | filtered | Extra                            |
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+|  1 | SIMPLE      | products | NULL       | index | NULL          | PRIMARY | 8       | NULL |   15 |     1.11 | Using where; Backward index scan |
++----+-------------+----------+------------+-------+---------------+---------+---------+------+------+----------+----------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit: 15 row(s)  (cost=1.56 rows=0.167) (actual time=0.0699..0.249 rows=15 loops=1)
+    -> Filter: ((products.`name` like '%Premium%') and (products.deleted_at is null))  (cost=1.56 rows=0.167) (actual time=0.0687..0.247 rows=15 loops=1)
+        -> Index scan on products using PRIMARY (reverse)  (cost=1.56 rows=15) (actual time=0.0164..0.176 rows=220 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit: 15 row(s)  (cost=1.56 rows=0.167) (actual time=0.0512..0.208 rows=15 loops=1)
+    -> Filter: ((products.`name` like '%Premium%') and (products.deleted_at is null))  (cost=1.56 rows=0.167) (actual time=0.0506..0.205 rows=15 loops=1)
+        -> Index scan on products using PRIMARY (reverse)  (cost=1.56 rows=15) (actual time=0.0148..0.15 rows=220 loops=1)
+
+################ Q10 product_images for 15 products
+SQL: select * from product_images where product_id in (503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517) order by positi...
+---- EXPLAIN
++----+-------------+----------------+------------+-------+-----------------------------------+-----------------------------------+---------+------+------+----------+---------------------------------------+
+| id | select_type | table          | partitions | type  | possible_keys                     | key                               | key_len | ref  | rows | filtered | Extra                                 |
++----+-------------+----------------+------------+-------+-----------------------------------+-----------------------------------+---------+------+------+----------+---------------------------------------+
+|  1 | SIMPLE      | product_images | NULL       | range | product_images_product_id_foreign | product_images_product_id_foreign | 8       | NULL |   27 |   100.00 | Using index condition; Using filesort |
++----+-------------+----------------+------------+-------+-----------------------------------+-----------------------------------+---------+------+------+----------+---------------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Sort: product_images.position  (cost=43.2 rows=27) (actual time=0.0772..0.0799 rows=22 loops=1)
+    -> Index range scan on product_images using product_images_product_id_foreign over (product_id = 503) OR (product_id = 504) OR (13 more), with index condition: (product_images.product_id in (503,504,505,506,507,508,509,510,511,512,513,514,515,516,517))  (cost=43.2 rows=27) (actual time=0.0197..0.0631 rows=22 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Sort: product_images.position  (cost=43.2 rows=27) (actual time=0.0734..0.0759 rows=22 loops=1)
+    -> Index range scan on product_images using product_images_product_id_foreign over (product_id = 503) OR (product_id = 504) OR (13 more), with index condition: (product_images.product_id in (503,504,505,506,507,508,509,510,511,512,513,514,515,516,517))  (cost=43.2 rows=27) (actual time=0.0197..0.0618 rows=22 loops=1)
+
+
+================================================================ PART 2: deferred-join variants
+################ D1 deferred join, offset 299980
+---- EXPLAIN
++----+-------------+------------+------------+--------+---------------+---------+---------+------+--------+----------+----------------------------------+
+| id | select_type | table      | partitions | type   | possible_keys | key     | key_len | ref  | rows   | filtered | Extra                            |
++----+-------------+------------+------------+--------+---------------+---------+---------+------+--------+----------+----------------------------------+
+|  1 | PRIMARY     | <derived2> | NULL       | ALL    | NULL          | NULL    | NULL    | NULL | 298146 |   100.00 | Using temporary; Using filesort  |
+|  1 | PRIMARY     | o          | NULL       | eq_ref | PRIMARY       | PRIMARY | 8       | t.id |      1 |   100.00 | NULL                             |
+|  2 | DERIVED     | orders     | NULL       | index  | NULL          | PRIMARY | 8       | NULL | 298146 |   100.00 | Backward index scan; Using index |
++----+-------------+------------+------------+--------+---------------+---------+---------+------+--------+----------+----------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Sort: o.id DESC  (actual time=69.7..69.7 rows=20 loops=1)
+    -> Stream results  (cost=104827 rows=0) (actual time=69.6..69.6 rows=20 loops=1)
+        -> Nested loop inner join  (cost=104827 rows=0) (actual time=69.5..69.5 rows=20 loops=1)
+            -> Table scan on t  (cost=30290..30290 rows=0) (actual time=69.4..69.4 rows=20 loops=1)
+                -> Materialize  (cost=30288..30288 rows=0) (actual time=69.4..69.4 rows=20 loops=1)
+                    -> Limit/Offset: 20/299980 row(s)  (cost=30288 rows=0) (actual time=69.3..69.3 rows=20 loops=1)
+                        -> Covering index scan on orders using PRIMARY (reverse)  (cost=30288 rows=298146) (actual time=2.02..58.9 rows=300000 loops=1)
+            -> Single-row index lookup on o using PRIMARY (id=t.id)  (cost=0.25 rows=1) (actual time=0.00228..0.00232 rows=1 loops=20)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Sort: o.id DESC  (actual time=69.8..69.8 rows=20 loops=1)
+    -> Stream results  (cost=104827 rows=0) (actual time=69.7..69.8 rows=20 loops=1)
+        -> Nested loop inner join  (cost=104827 rows=0) (actual time=69.7..69.7 rows=20 loops=1)
+            -> Table scan on t  (cost=30290..30290 rows=0) (actual time=69.7..69.7 rows=20 loops=1)
+                -> Materialize  (cost=30288..30288 rows=0) (actual time=69.7..69.7 rows=20 loops=1)
+                    -> Limit/Offset: 20/299980 row(s)  (cost=30288 rows=0) (actual time=69.6..69.6 rows=20 loops=1)
+                        -> Covering index scan on orders using PRIMARY (reverse)  (cost=30288 rows=298146) (actual time=1.78..59.5 rows=300000 loops=1)
+            -> Single-row index lookup on o using PRIMARY (id=t.id)  (cost=0.25 rows=1) (actual time=0.00219..0.00223 rows=1 loops=20)
+
+################ D2 deferred join, offset 5980
+---- EXPLAIN
++----+-------------+------------+------------+--------+---------------+---------+---------+------+------+----------+----------------------------------+
+| id | select_type | table      | partitions | type   | possible_keys | key     | key_len | ref  | rows | filtered | Extra                            |
++----+-------------+------------+------------+--------+---------------+---------+---------+------+------+----------+----------------------------------+
+|  1 | PRIMARY     | <derived2> | NULL       | ALL    | NULL          | NULL    | NULL    | NULL | 6000 |   100.00 | Using temporary; Using filesort  |
+|  1 | PRIMARY     | o          | NULL       | eq_ref | PRIMARY       | PRIMARY | 8       | t.id |    1 |   100.00 | NULL                             |
+|  2 | DERIVED     | orders     | NULL       | index  | NULL          | PRIMARY | 8       | NULL | 6000 |   100.00 | Backward index scan; Using index |
++----+-------------+------------+------------+--------+---------------+---------+---------+------+------+----------+----------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Sort: o.id DESC  (actual time=1.49..1.5 rows=20 loops=1)
+    -> Stream results  (cost=1528 rows=20) (actual time=1.42..1.48 rows=20 loops=1)
+        -> Nested loop inner join  (cost=1528 rows=20) (actual time=1.42..1.46 rows=20 loops=1)
+            -> Table scan on t  (cost=23.7..26.3 rows=20) (actual time=1.41..1.41 rows=20 loops=1)
+                -> Materialize  (cost=23.6..23.6 rows=20) (actual time=1.41..1.41 rows=20 loops=1)
+                    -> Limit/Offset: 20/5980 row(s)  (cost=21.6 rows=20) (actual time=1.4..1.4 rows=20 loops=1)
+                        -> Covering index scan on orders using PRIMARY (reverse)  (cost=21.6 rows=6000) (actual time=0.0964..1.2 rows=6000 loops=1)
+            -> Single-row index lookup on o using PRIMARY (id=t.id)  (cost=0.25 rows=1) (actual time=0.002..0.00204 rows=1 loops=20)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Sort: o.id DESC  (actual time=1.48..1.48 rows=20 loops=1)
+    -> Stream results  (cost=1528 rows=20) (actual time=1.41..1.47 rows=20 loops=1)
+        -> Nested loop inner join  (cost=1528 rows=20) (actual time=1.41..1.45 rows=20 loops=1)
+            -> Table scan on t  (cost=23.7..26.3 rows=20) (actual time=1.4..1.4 rows=20 loops=1)
+                -> Materialize  (cost=23.6..23.6 rows=20) (actual time=1.4..1.4 rows=20 loops=1)
+                    -> Limit/Offset: 20/5980 row(s)  (cost=21.6 rows=20) (actual time=1.38..1.39 rows=20 loops=1)
+                        -> Covering index scan on orders using PRIMARY (reverse)  (cost=21.6 rows=6000) (actual time=0.0963..1.19 rows=6000 loops=1)
+            -> Single-row index lookup on o using PRIMARY (id=t.id)  (cost=0.25 rows=1) (actual time=0.00202..0.00203 rows=1 loops=20)
+
+################ D3 direct, offset 150000 (middle page)
+---- EXPLAIN
++----+-------------+--------+------------+-------+---------------+---------+---------+------+--------+----------+---------------------+
+| id | select_type | table  | partitions | type  | possible_keys | key     | key_len | ref  | rows   | filtered | Extra               |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+--------+----------+---------------------+
+|  1 | SIMPLE      | orders | NULL       | index | NULL          | PRIMARY | 8       | NULL | 150020 |   100.00 | Backward index scan |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+--------+----------+---------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit/Offset: 20/150000 row(s)  (cost=7787 rows=20) (actual time=77.6..77.6 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY (reverse)  (cost=7787 rows=150020) (actual time=0.182..72.4 rows=150020 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit/Offset: 20/150000 row(s)  (cost=7787 rows=20) (actual time=80.2..80.2 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY (reverse)  (cost=7787 rows=150020) (actual time=0.184..74.9 rows=150020 loops=1)
+
+################ D4 deferred join, offset 150000
+---- EXPLAIN
++----+-------------+------------+------------+--------+---------------+---------+---------+------+--------+----------+----------------------------------+
+| id | select_type | table      | partitions | type   | possible_keys | key     | key_len | ref  | rows   | filtered | Extra                            |
++----+-------------+------------+------------+--------+---------------+---------+---------+------+--------+----------+----------------------------------+
+|  1 | PRIMARY     | <derived2> | NULL       | ALL    | NULL          | NULL    | NULL    | NULL | 150020 |   100.00 | Using temporary; Using filesort  |
+|  1 | PRIMARY     | o          | NULL       | eq_ref | PRIMARY       | PRIMARY | 8       | t.id |      1 |   100.00 | NULL                             |
+|  2 | DERIVED     | orders     | NULL       | index  | NULL          | PRIMARY | 8       | NULL | 150020 |   100.00 | Backward index scan; Using index |
++----+-------------+------------+------------+--------+---------------+---------+---------+------+--------+----------+----------------------------------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Sort: o.id DESC  (actual time=37.4..37.4 rows=20 loops=1)
+    -> Stream results  (cost=45298 rows=20) (actual time=37.3..37.4 rows=20 loops=1)
+        -> Nested loop inner join  (cost=45298 rows=20) (actual time=37.3..37.3 rows=20 loops=1)
+            -> Table scan on t  (cost=7789..7791 rows=20) (actual time=37.3..37.3 rows=20 loops=1)
+                -> Materialize  (cost=7789..7789 rows=20) (actual time=37.3..37.3 rows=20 loops=1)
+                    -> Limit/Offset: 20/150000 row(s)  (cost=7787 rows=20) (actual time=37.2..37.2 rows=20 loops=1)
+                        -> Covering index scan on orders using PRIMARY (reverse)  (cost=7787 rows=150020) (actual time=2.64..32 rows=150020 loops=1)
+            -> Single-row index lookup on o using PRIMARY (id=t.id)  (cost=0.25 rows=1) (actual time=0.0024..0.00243 rows=1 loops=20)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Sort: o.id DESC  (actual time=35.4..35.4 rows=20 loops=1)
+    -> Stream results  (cost=45298 rows=20) (actual time=35.3..35.3 rows=20 loops=1)
+        -> Nested loop inner join  (cost=45298 rows=20) (actual time=35.3..35.3 rows=20 loops=1)
+            -> Table scan on t  (cost=7789..7791 rows=20) (actual time=35.3..35.3 rows=20 loops=1)
+                -> Materialize  (cost=7789..7789 rows=20) (actual time=35.3..35.3 rows=20 loops=1)
+                    -> Limit/Offset: 20/150000 row(s)  (cost=7787 rows=20) (actual time=35.2..35.2 rows=20 loops=1)
+                        -> Covering index scan on orders using PRIMARY (reverse)  (cost=7787 rows=150020) (actual time=1.67..30.2 rows=150020 loops=1)
+            -> Single-row index lookup on o using PRIMARY (id=t.id)  (cost=0.25 rows=1) (actual time=0.00255..0.0026 rows=1 loops=20)
+
+################ D5 reverse-direction (asc), last page = offset 0 (needs approval, not pre-authorised)
+---- EXPLAIN
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+-------+
+| id | select_type | table  | partitions | type  | possible_keys | key     | key_len | ref  | rows | filtered | Extra |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+-------+
+|  1 | SIMPLE      | orders | NULL       | index | NULL          | PRIMARY | 8       | NULL |   20 |   100.00 | NULL  |
++----+-------------+--------+------------+-------+---------------+---------+---------+------+------+----------+-------+
+---- EXPLAIN ANALYZE (first, noisy)
+-> Limit: 20 row(s)  (cost=0.0319 rows=20) (actual time=0.0247..0.035 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY  (cost=0.0319 rows=20) (actual time=0.0172..0.0265 rows=20 loops=1)
+
+---- EXPLAIN ANALYZE (warm, noisy)
+-> Limit: 20 row(s)  (cost=0.0319 rows=20) (actual time=0.0175..0.028 rows=20 loops=1)
+    -> Index scan on orders using PRIMARY  (cost=0.0319 rows=20) (actual time=0.0168..0.0265 rows=20 loops=1)
+

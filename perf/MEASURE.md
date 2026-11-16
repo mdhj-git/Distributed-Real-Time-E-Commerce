@@ -435,3 +435,26 @@ $after = $ids | ForEach-Object { Get-Stock $_ }
 "stock restored: $((Compare-Object $before $after -SyncWindow 0).Count -eq 0)"
 ```
 
+
+### 12.5 Bindings in the counter (Step 2, TEMPORARY)
+
+With `PERF_QUERY_LOG=true` the counter also writes the binding values of every query in a `values` field (strings cut to 100 characters). They are never recorded for `/auth/*` requests (login and `auth/me`), where only the number of bindings is kept. Use it to rebuild a query with literal values for `EXPLAIN`.
+
+```powershell
+function Show-QueriesWithValues {   # like Show-Queries (12.2), plus the binding values
+  $rows = @(Read-Counter)
+  foreach ($r in @($rows | Where-Object type -eq 'request')) {
+    "--- $($r.status) $($r.method) /$($r.path)?$($r.query)  queries=$($r.queries) db_ms=$($r.ms)"
+    $rows | Where-Object { $_.req -eq $r.req -and $_.type -eq 'query' } | ForEach-Object {
+      $v = if ($_.PSObject.Properties.Name -contains 'values') { ($_.values | Select-Object -First 8) -join ', ' } else { '(not logged)' }
+      "   {0,8} ms  {1}   [{2}]" -f $_.ms, (Norm $_.sql), $v
+    }
+  }
+}
+```
+
+EXPLAIN on a rebuilt query (read-only, runs inside the container, the password is never printed):
+
+```powershell
+"EXPLAIN ANALYZE select * from orders order by id desc limit 20 offset 299980;" | docker compose exec -T mysql sh -c 'MYSQL_PWD=$MYSQL_ROOT_PASSWORD mysql -uroot ecommerce -B -N -r'
+```
