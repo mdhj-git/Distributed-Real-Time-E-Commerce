@@ -3,6 +3,7 @@
 namespace Modules\Products\Providers;
 
 use Illuminate\Support\Facades\Gate;
+use Modules\Products\Console\CacheFlushCommand;
 use Modules\Products\Console\ImportStockCommand;
 use Modules\Products\Contracts\InventoryService;
 use Modules\Products\Contracts\ProductCatalog;
@@ -53,7 +54,7 @@ class ProductsServiceProvider extends ModuleServiceProvider
         Gate::policy(Product::class, ProductPolicy::class);
 
         if ($this->app->runningInConsole()) {
-            $this->commands([ImportStockCommand::class]);
+            $this->commands([ImportStockCommand::class, CacheFlushCommand::class]);
         }
     }
 }

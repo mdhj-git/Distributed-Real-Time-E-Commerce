@@ -32,6 +32,20 @@ export function recordBody(res, route) {
   bodyBytes.add(res.body ? res.body.length : 0, { name: route });
 }
 
+// X-Cache response header of counted requests, per route: HIT, MISS or absent (no header, or any other value).
+// Metric only: it reads a header of a response that was already received. Setup requests never call this.
+export const CACHE_RESULTS = ['HIT', 'MISS', 'absent'];
+export const xCache = new Counter('x_cache');
+
+export function cacheResult(res) {
+  const h = res.headers['X-Cache'] || res.headers['x-cache'];
+  return h === 'HIT' || h === 'MISS' ? h : 'absent';
+}
+
+export function recordCache(res, route) {
+  xCache.add(1, { name: route, result: cacheResult(res) });
+}
+
 // ---------- deterministic generator (per VU, module state is per VU in k6) ----------
 let state = ((__VU || 1) * 2654435761) >>> 0;
 export function rnd() {
@@ -61,6 +75,9 @@ export function thresholdsFor(routes) {
     t[`http_reqs{name:${r}}`] = ['count>=0'];
     t[`data_received{name:${r},phase:main}`] = ['count>=0'];
     t[`response_body_bytes{name:${r}}`] = ['count>=0'];
+    CACHE_RESULTS.forEach((v) => {
+      t[`x_cache{name:${r},result:${v}}`] = ['count>=0'];
+    });
   });
   return t;
 }
@@ -94,7 +111,10 @@ function record(res) {
 export function get(path, route, token, extraHeaders) {
   const res = http.get(`${BASE_URL}${path}`, params(token, route, extraHeaders));
   record(res);
-  if (!route.startsWith('setup')) recordBody(res, route);
+  if (!route.startsWith('setup')) {
+    recordBody(res, route);
+    recordCache(res, route);
+  }
   return res;
 }
 
@@ -250,12 +270,17 @@ export function textReport(data, routes, durationSeconds) {
   lines.push(`  data_received (main)     ${bytes('data_received{phase:main}')}   (k6 sub-metric, headers included)`);
   lines.push(`  response body (main)     ${bytes('response_body_bytes')}   (measured by the script, body only)`);
   lines.push(`  data_received (whole test, includes setup)  ${bytes('data_received')}`);
+  // X-Cache counts: before the Redis cache exists every response is "absent", which is expected.
+  const cacheCount = (r, v) => count(`x_cache{name:${r},result:${v}}`);
+  const cacheTotal = (v) => routes.reduce((sum, r) => sum + cacheCount(r, v), 0);
+  lines.push(`  x-cache (main)           HIT=${cacheTotal('HIT')} MISS=${cacheTotal('MISS')} absent=${cacheTotal('absent')}   (X-Cache response header of counted requests)`);
   lines.push('');
   routes.forEach((r) => {
     lines.push(metricLine(r, M[`http_req_duration{name:${r}}`]));
     lines.push(
       `    requests=${count(`http_reqs{name:${r}}`)} data_received=${bytes(`data_received{name:${r},phase:main}`)} body=${bytes(`response_body_bytes{name:${r}}`)}`
     );
+    lines.push(`    x-cache HIT=${cacheCount(r, 'HIT')} MISS=${cacheCount(r, 'MISS')} absent=${cacheCount(r, 'absent')}`);
   });
   lines.push('');
   const failed = M['http_req_failed{phase:main}'];
@@ -268,11 +293,19 @@ export function textReport(data, routes, durationSeconds) {
   return lines.join('\n') + '\n';
 }
 
+// k6 puts the return value of setup() into the summary data as setup_data. Here that holds every JWT,
+// so the token values are replaced before anything is written to a file. Nothing else is changed.
+export function redactSetupData(data) {
+  if (!data || data.setup_data === undefined) return data;
+  const clean = JSON.parse(JSON.stringify(data.setup_data, (k, v) => (k === 'token' ? '<redacted>' : v)));
+  return Object.assign({}, data, { setup_data: clean });
+}
+
 export function summaryOutputs(data, routes, durationSeconds) {
   const label = __ENV.LABEL || 'unlabeled';
   const run = __ENV.RUN || '1';
-  return {
-    stdout: textReport(data, routes, durationSeconds),
-    [`/perf/results/${label}-${run}.json`]: JSON.stringify(data, null, 2),
-  };
+  const out = { stdout: textReport(data, routes, durationSeconds) };
+  // RUN=0 marks a discarded run (same convention as warmup.js): the text report is printed, no file is written.
+  if (run !== '0') out[`/perf/results/${label}-${run}.json`] = JSON.stringify(redactSetupData(data), null, 2);
+  return out;
 }

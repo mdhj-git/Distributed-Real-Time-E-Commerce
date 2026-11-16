@@ -14,6 +14,7 @@ import {
   summaryOutputs,
   rateLimited429,
   recordBody,
+  recordCache,
   serverErrors5xx,
   stockNullResponses,
 } from './lib.js';
@@ -45,6 +46,7 @@ export default function () {
   if (res.status === 429) rateLimited429.add(1);
   if (res.status >= 500) serverErrors5xx.add(1);
   recordBody(res, ROUTE);
+  recordCache(res, ROUTE);
 
   if (res.status === 304) {
     responses304.add(1);
