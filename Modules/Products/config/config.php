@@ -31,4 +31,16 @@ return [
         'categories_ttl' => (int) env('PRODUCTS_CACHE_CATEGORIES_TTL', 3600),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | ETag on product detail (requirement 3, step 5)
+    |--------------------------------------------------------------------------
+    |
+    | Switch for the ConditionalEtag middleware. When false the route answers
+    | exactly as before (no ETag, no 304). Read here and nowhere else.
+    |
+    */
+
+    'etag_enabled' => (bool) env('ETAG_ENABLED', true),
+
 ];

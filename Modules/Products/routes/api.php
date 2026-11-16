@@ -3,13 +3,16 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Products\Http\Controllers\CategoryController;
 use Modules\Products\Http\Controllers\ProductController;
+use Modules\Products\Http\Middleware\ConditionalEtag;
 
 // The api/v1 prefix and the api middleware group are applied in Providers/RouteServiceProvider.php.
 
 Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
 
 Route::get('products', [ProductController::class, 'index'])->name('products.index');
-Route::get('products/{product}', [ProductController::class, 'show'])->name('products.show');
+Route::get('products/{product}', [ProductController::class, 'show'])
+    ->middleware(ConditionalEtag::class)
+    ->name('products.show');
 
 Route::middleware(['auth:api', 'can:admin'])->group(function () {
     Route::post('products', [ProductController::class, 'store'])->name('products.store');
