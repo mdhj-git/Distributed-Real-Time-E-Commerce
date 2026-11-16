@@ -2,7 +2,7 @@
 
 Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 on reads, write-path per-item insert fixed (bulk insert). Step 2: analysis done, no new index is justified, no migration. One query rewrite (deferred join in `OrderService::paginate`) is implemented and checked (JSON identical). The `step2-indexes` k6 run is recorded (2 valid runs, lower than the baseline on every route, NOT attributed to the rewrite: the same-day control run was not done, by decision). The regression checks passed. The scratch-table write-cost and read-side benchmark is done and cleaned up. Zero indexes were added.
 
-Steps 3 to 5 (branch `feat/r3-step3-5-caching`): Step 3 (cache store) is skipped because the store is already Redis. The same-day control `step3-pre` is recorded (2 valid runs). Step 4 (catalog cache in Redis) is in progress and Step 5 (ETag) is not started. Numbers for them are filled only from the k6 output pasted by the reviewer.
+Steps 3 to 5 (branch `feat/r3-step3-5-caching`): Step 3 (cache store) is skipped because the store is already Redis. The same-day control `step3-pre` is recorded (2 valid runs). Step 4 (catalog cache in Redis) is implemented and measured (`step4-redis`, 2 valid runs, 99 percent HIT on the cached routes); the measurement files wait for the reviewer's commit. The latency gain on the cached routes cannot be credited to the cache alone, see "Reading" in "Step 4 k6 measurement". Step 5 (ETag) is not started. Numbers for them are filled only from the k6 output pasted by the reviewer.
 
 Rules for this file:
 - Every performance number (p50, p95, p99, requests per second, data volume) comes only from k6 output pasted by the reviewer, or from the JSON files in `perf/results/`. Nothing is estimated.
@@ -41,7 +41,7 @@ Product list (`products_list`)
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 668.40 / 670.47 ms; p95 771.59 / 763.45 ms; p99 807.28 / 802.71 ms; requests 524 / 521; body bytes 7169504 / 7107567. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 678.47 / 670.29 ms; p95 834.34 / 779.06 ms; p99 908.05 / 818.03 ms; requests 500 / 517; body bytes 6877153 / 7082417. X-Cache: absent 500 / 517 (no cache exists yet).
-- step4-redis: reserved
+- step4-redis (run 1 / run 2): p50 596.10 / 582.31 ms; p95 721.42 / 698.82 ms; p99 857.82 / 748.85 ms; requests 575 / 585; body bytes 7871958 / 7979043. X-Cache: HIT 575 / 585, MISS 0 / 0. Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
 - step5-etag: reserved
 - step6 (Read Replica): reserved
 
@@ -50,35 +50,40 @@ Product detail (`product_detail`)
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 646.82 / 645.45 ms; p95 737.75 / 738.55 ms; p99 780.01 / 774.52 ms; requests 388 / 389; body bytes 162568 / 162957. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 664.41 / 651.83 ms; p95 800.29 / 750.92 ms; p99 863.00 / 801.45 ms; requests 377 / 386; body bytes 157872 / 161888. X-Cache: absent 377 / 386.
-- step4-redis, step5-etag, step6 (Read Replica): reserved
+- step4-redis (run 1 / run 2): p50 588.18 / 575.00 ms; p95 718.95 / 697.64 ms; p99 871.05 / 727.84 ms; requests 415 / 429; body bytes 174048 / 180205. X-Cache: HIT 407 / 418, MISS 8 / 11. Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
+- step5-etag, step6 (Read Replica): reserved
 
 Customer order list (`orders_customer_list`)
 - baseline (run 1 / run 2): p50 662.31 / 654.20 ms; p95 779.76 / 778.31 ms; p99 825.85 / 838.71 ms; requests 338 / 347; body bytes 1898452 / 1948884
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 646.85 / 642.99 ms; p95 742.89 / 746.08 ms; p99 790.18 / 767.48 ms; requests 359 / 356; body bytes 2017822 / 2000418. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 664.02 / 650.62 ms; p95 791.82 / 752.19 ms; p99 827.65 / 798.14 ms; requests 343 / 356; body bytes 1925927 / 2000149. X-Cache: absent 343 / 356.
-- step4-redis, step5-etag, step6 (Read Replica): reserved
+- step4-redis (run 1 / run 2): p50 594.24 / 584.26 ms; p95 728.21 / 705.46 ms; p99 844.60 / 756.99 ms; requests 396 / 406; body bytes 2226930 / 2284436. X-Cache: absent 396 / 406 (route not cached). Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
+- step5-etag, step6 (Read Replica): reserved
 
 Customer order detail (`order_detail`)
 - baseline (run 1 / run 2): p50 660.45 / 646.76 ms; p95 776.58 / 774.86 ms; p99 820.78 / 827.65 ms; requests 272 / 276; body bytes 107536 / 109079
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 635.29 / 635.81 ms; p95 726.50 / 726.33 ms; p99 756.23 / 752.62 ms; requests 281 / 279; body bytes 111074 / 110289. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 653.31 / 643.86 ms; p95 807.37 / 739.36 ms; p99 859.62 / 772.76 ms; requests 276 / 278; body bytes 109079 / 109856. X-Cache: absent 276 / 278.
-- step4-redis, step5-etag, step6 (Read Replica): reserved
+- step4-redis (run 1 / run 2): p50 580.19 / 572.10 ms; p95 703.76 / 683.53 ms; p99 834.39 / 712.56 ms; requests 303 / 309; body bytes 119398 / 121801. X-Cache: absent 303 / 309 (route not cached). Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
+- step5-etag, step6 (Read Replica): reserved
 
 Admin order list (`orders_admin_list`)
 - baseline (run 1 / run 2): p50 773.45 / 767.29 ms; p95 988.22 / 955.48 ms; p99 1041.77 / 998.20 ms; requests 266 / 269; body bytes 2048246 / 2071963
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 716.45 / 733.32 ms; p95 832.03 / 844.55 ms; p99 866.30 / 880.26 ms; requests 280 / 277; body bytes 2155456 / 2132503. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2): p50 753.17 / 726.12 ms; p95 918.92 / 826.37 ms; p99 1006.43 / 872.24 ms; requests 268 / 276; body bytes 2014582 / 2075454. X-Cache: absent 268 / 276.
-- step4-redis, step5-etag, step6 (Read Replica): reserved
+- step4-redis (run 1 / run 2): p50 667.49 / 649.60 ms; p95 813.83 / 786.87 ms; p99 938.24 / 830.07 ms; requests 303 / 308; body bytes 2275186 / 2312266. X-Cache: absent 303 / 308 (route not cached). Mean and change against `step3-pre`: see "Step 4 k6 measurement" below.
+- step5-etag, step6 (Read Replica): reserved
 
 Overall (tag `phase:main`): p50, p95, p99, requests per second, response body bytes (`data_received` sub-metric is n/a in k6)
 - baseline (run 1 / run 2 / mean): p50 682.58 / 671.84 / 677.21 ms; p95 858.56 / 860.94 / 859.75 ms; p99 982.35 / 941.09 / 961.72 ms; requests 1747 / 1772; req/s 29.12 / 29.53 / 29.33; body bytes 11040040 / 11182464
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2 / mean): p50 659.57 / 661.29 / 660.43 ms; p95 773.41 / 780.96 / 777.19 ms; p99 828.60 / 841.48 / 835.04 ms; requests 1832 / 1822; req/s 30.53 / 30.37 / 30.45; body bytes 11616424 / 11513734. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3-pre (same-day control, run 1 / run 2 / mean): p50 676.09 / 666.06 / 671.07 ms; p95 834.32 / 785.31 / 809.81 ms; p99 921.92 / 821.91 / 871.91 ms; requests 1764 / 1813; req/s 29.40 / 30.22 / 29.81; body bytes 11084613 / 11429764. X-Cache: absent 1764 / 1813. Details in "Step 3" below.
-- step4-redis, step5-etag, step6 (Read Replica): reserved
+- step4-redis (run 1 / run 2 / mean): p50 601.61 / 587.62 / 594.62 ms; p95 751.77 / 720.61 / 736.19 ms; p99 876.16 / 776.41 / 826.29 ms; requests 1992 / 2037; req/s 33.20 / 33.95 / 33.58; body bytes 12667520 / 12877751. X-Cache: HIT 982 / 1003, MISS 8 / 11, absent 1002 / 1023. Details in "Step 4 k6 measurement" below.
+- step5-etag, step6 (Read Replica): reserved
 
 ## Baseline
 
@@ -585,7 +590,7 @@ Reading (careful, two runs only)
 
 ## Step 4: catalog cache in Redis
 
-Status: implemented and checked (see "Checks done before the measurement"). The `step4-redis` measurement is not done yet. Its numbers are filled only from the k6 output pasted by the reviewer.
+Status: implemented and checked (see "Checks done before the measurement"). The `step4-redis` measurement is done (2 valid runs, see "Step 4 k6 measurement" at the end of this section), and so are the query counts, the manual checks, the Redis diagnostics and the regression checks. The measurement files wait for the reviewer's commit. All numbers come only from the k6 output and terminal output pasted by the reviewer.
 
 What is cached, and what is not
 - Cached, as plain arrays only (never models, closures or paginators): product list pages, product details and `GET /categories`. No API route writes categories (they come from the seeder), so that list has the longest TTL.
@@ -652,6 +657,141 @@ Checks done before the measurement (production code changed only from this point
 - The mechanism checks for the primary fill and for `DB::afterCommit` are described above.
 
 Procedure of `step4-redis`. The warm-up procedure of this label is: `warmup.js`, a 60 s pause, one discarded replay of `baseline.js` with `RUN=0` (no JSON file, no docker stats, no screenshot, not in any table or median), a 60 s pause, then the two runs. The reason: every VU draws the same pseudo-random sequence in every run (the generator is seeded only by the VU number), so without the replay run 2 would repeat run 1's keys on a warm cache while run 1 starts partly cold.
+
+### Step 4 k6 measurement (label `step4-redis`)
+
+Source of every number in this section: the raw k6 output and the terminal output pasted by the reviewer at Gate 4. Means, differences and percentages were computed by script from the two-decimal values in that output. The `step3-pre` values are the ones recorded in "Step 3" above. The JSON files `perf/results/step4-redis-1.json` and `step4-redis-2.json` were not used for any number here. Nothing is estimated.
+
+What was measured
+- Code under test: commit `31363c5` (`r3-step4: cache catalog reads in Redis with version keys`). Cached: product list pages, product details and `GET /categories`. Not cached: the three order routes, stock quantities (live `GetStock` call on every list and detail request).
+- Procedure of this label: `products:cache-flush` (namespace became 2), warm-up (`warmup.js`, 10 VUs, 20 s), 60 s pause, one discarded replay of `baseline.js` (`LABEL=step4-replay`, `RUN=0`: no JSON file, no docker stats window, no screenshot), 60 s pause, run 1, 60 s pause, run 2. No number of the replay is used anywhere in this report.
+- Same scenario as before: 20 VUs, constant, 60 s, no think time. `API_RATE_LIMIT_PER_MINUTE` was 100000 during the runs and 60 afterwards (`config:show ratelimit` printed 100000 before and 60 after). `PERF_QUERY_LOG=false` before and after (checked in `.env`).
+- Dataset, read by `Show-DataCheck` right before the flush: users 2003, products 5003 rows (5002 not deleted), orders 300002, order_items 750605, product_images 7570, max product id 5003, 5003 stock rows in `inventory-db`, stock of products 1 and 2 = 50 and 100 (API and `inventory-db`), `git diff --stat perf/k6/customers.json` empty.
+  - Expected differences from `step3-pre`: the manual checks added one soft-deleted product (id 5003), one image (id 7570) and one stock row. The visible catalog (5002 products) and the orders (300002) are the same as in `step3-pre`.
+- Timeline (local time, UTC+3): flush at 20:32:13 (T0). Warm-up done at +46 s. Discarded replay done at +191 s. Run 1 started at 20:36:25 and finished at 20:37:51: 339 s after the flush. Run 2 finished at 20:40:17: 485 s after the flush. Both are under the 570 s limit set for cache labels, so no list entry written by the warm-up can have reached its 600 s TTL during a measured run, and no expiry caveat applies.
+- Validity: both runs `RUN VALID` yes, 0 responses with 429, 0 with 5xx, 0 with `stock:null`, failed rate 0 percent. Overall p95 of the two runs differs by 31.16 ms (4.2 percent of their mean), under the 10 percent limit, so no third run was made.
+- Token check: `eyJ` was searched in `step4-redis-1.json` after run 1 and in both files after run 2: nothing found.
+- X-Cache counters of the counted requests (HIT / MISS / absent):
+  - Run 1: overall 982 / 8 / 1002. `products_list` 575 / 0 / 0. `product_detail` 407 / 8 / 0. The three order routes: absent 396, 303 and 303.
+  - Run 2: overall 1003 / 11 / 1023. `products_list` 585 / 0 / 0. `product_detail` 418 / 11 / 0. The three order routes: absent 406, 309 and 308.
+  - HIT share of the cacheable requests: 982 of 990 (99.19 percent) in run 1 and 1003 of 1014 (98.92 percent) in run 2. Every MISS is on `product_detail`. `product_detail` draws ids uniformly from 5000, so ids that neither the warm-up nor the replay had drawn are first-time keys. That explanation was not checked key by key.
+  - Cacheable routes share of the traffic: `products_list` plus `product_detail` = 990 of 1992 requests (49.7 percent) in run 1 and 1014 of 2037 (49.8 percent) in run 2, the same share as in `step3-pre` (49.7 and 49.8 percent) and the designed 30 plus 20 percent weights.
+- Evidence files: `perf/results/step4-redis-1.json`, `perf/results/step4-redis-2.json`, `perf/results/step4-redis-docker-stats.txt` (UTF-8, not edited, see the deviation below). Screenshots (supporting only, saved by the reviewer): `docs/r3-evidence/step4-redis-run1.png`, `docs/r3-evidence/step4-redis-run2.png`. All untracked until the reviewer commits.
+
+Results (run 1 / run 2 / mean), values in ms unless stated; req/s = requests / 60
+- ALL: p50 601.61 / 587.62 / 594.62; p95 751.77 / 720.61 / 736.19; p99 876.16 / 776.41 / 826.29; requests 1992 / 2037; req/s 33.20 / 33.95 / 33.58; body bytes 12667520 / 12877751.
+- `products_list`: p50 596.10 / 582.31 / 589.21; p95 721.42 / 698.82 / 710.12; p99 857.82 / 748.85 / 803.34; requests 575 / 585; body bytes 7871958 / 7979043.
+- `product_detail`: p50 588.18 / 575.00 / 581.59; p95 718.95 / 697.64 / 708.30; p99 871.05 / 727.84 / 799.45; requests 415 / 429; body bytes 174048 / 180205.
+- `orders_customer_list`: p50 594.24 / 584.26 / 589.25; p95 728.21 / 705.46 / 716.84; p99 844.60 / 756.99 / 800.80; requests 396 / 406; body bytes 2226930 / 2284436.
+- `order_detail`: p50 580.19 / 572.10 / 576.15; p95 703.76 / 683.53 / 693.65; p99 834.39 / 712.56 / 773.48; requests 303 / 309; body bytes 119398 / 121801.
+- `orders_admin_list`: p50 667.49 / 649.60 / 658.55; p95 813.83 / 786.87 / 800.35; p99 938.24 / 830.07 / 884.16; requests 303 / 308; body bytes 2275186 / 2312266.
+
+Comparison against `step3-pre` (mean of 2 runs each, `step3-pre` -> `step4-redis`; req/s = requests / 60)
+- Same rule as in the Step 2 section: the change of the means is compared with the larger of the two run-to-run differences (`|run 1 - run 2|` of each side). With two runs per side this is a rough guide, not a statistical test, and it says nothing about the difference between two sessions. The run-to-run differences are in brackets as `step3-pre` / `step4-redis`.
+- Overall
+  - p50: 671.07 -> 594.62 ms (-76.45 ms, -11.4%) (10.03 / 13.99). Outside the run-to-run spread.
+  - p95: 809.81 -> 736.19 ms (-73.62 ms, -9.1%) (49.01 / 31.16). Outside.
+  - p99: 871.91 -> 826.29 ms (-45.62 ms, -5.2%) (100.01 / 99.75). Within.
+  - req/s: 29.81 -> 33.58 (+3.77, +12.6%) (0.82 / 0.75). Outside.
+- `products_list` (cached)
+  - p50: 674.38 -> 589.21 ms (-85.17 ms, -12.6%) (8.18 / 13.79). Outside.
+  - p95: 806.70 -> 710.12 ms (-96.58 ms, -12.0%) (55.28 / 22.60). Outside.
+  - p99: 863.04 -> 803.34 ms (-59.70 ms, -6.9%) (90.02 / 108.97). Within.
+  - req/s: 8.48 -> 9.67 (+1.19, +14.1%) (0.28 / 0.17).
+- `product_detail` (cached)
+  - p50: 658.12 -> 581.59 ms (-76.53 ms, -11.6%) (12.58 / 13.18). Outside.
+  - p95: 775.60 -> 708.30 ms (-67.30 ms, -8.7%) (49.37 / 21.31). Outside.
+  - p99: 832.22 -> 799.45 ms (-32.77 ms, -3.9%) (61.55 / 143.21). Within.
+  - req/s: 6.36 -> 7.03 (+0.67, +10.6%) (0.15 / 0.23).
+- `orders_customer_list` (not cached)
+  - p50: 657.32 -> 589.25 ms (-68.07 ms, -10.4%) (13.40 / 9.98). Outside.
+  - p95: 772.00 -> 716.84 ms (-55.16 ms, -7.1%) (39.63 / 22.75). Outside.
+  - p99: 812.90 -> 800.80 ms (-12.10 ms, -1.5%) (29.51 / 87.61). Within.
+  - req/s: 5.83 -> 6.68 (+0.85, +14.7%) (0.22 / 0.17).
+- `order_detail` (not cached)
+  - p50: 648.58 -> 576.15 ms (-72.43 ms, -11.2%) (9.45 / 8.09). Outside.
+  - p95: 773.37 -> 693.65 ms (-79.72 ms, -10.3%) (68.01 / 20.23). Outside.
+  - p99: 816.19 -> 773.48 ms (-42.71 ms, -5.2%) (86.86 / 121.83). Within.
+  - req/s: 4.62 -> 5.10 (+0.48, +10.5%) (0.03 / 0.10).
+- `orders_admin_list` (not cached)
+  - p50: 739.65 -> 658.55 ms (-81.10 ms, -11.0%) (27.05 / 17.89). Outside.
+  - p95: 872.64 -> 800.35 ms (-72.29 ms, -8.3%) (92.55 / 26.96). Within.
+  - p99: 939.33 -> 884.16 ms (-55.17 ms, -5.9%) (134.19 / 108.17). Within.
+  - req/s: 4.53 -> 5.09 (+0.56, +12.3%) (0.13 / 0.08).
+
+Reading: what the data supports and what it does not
+- The uncached routes improved by almost the same amount as the cached routes. p50 of the three order routes fell by 10.4 percent (`orders_customer_list`), 11.2 percent (`order_detail`) and 11.0 percent (`orders_admin_list`). p50 of the two cached routes fell by 12.6 percent (`products_list`) and 11.6 percent (`product_detail`). The gap is 0.4 to 2.2 percentage points. These three routes never touch the catalog cache, and their requests per second rose by 10.5 to 14.7 percent, against 10.6 and 14.1 percent on the cached routes.
+- So the latency gain cannot be credited to the cache alone. Two explanations fit and this data cannot separate them from the cache effect:
+  - A level shift between sessions. `step2-indexes` and `step3-pre` ran the same production code on different days and differed by +1.6 percent in p50 and +4.2 percent in p95. The shift seen here on the uncached routes is larger than that earlier difference, so a session shift alone is not a comfortable explanation either, but it cannot be excluded. No same-session control with the cache bypassed was run.
+  - The queue effect of a closed loop. 20 VUs share 5 PHP-FPM workers and almost all of the latency is waiting for a worker (see the Little's law note in the Baseline section). If half of the requests need less service time, workers are free sooner and every route waits less, including the routes that are not cached. This would make part of the uncached routes' gain an indirect effect of the cache. The data does not show how large that part is.
+- The cached routes are only about half of the traffic (49.7 and 49.8 percent of the requests). The other half, the three order routes with the heavier queries, is untouched. Even a HIT is not free: the request still passes nginx, PHP-FPM start-up, the rate limiter write to Redis and one `GetStock` gRPC call, and a detail HIT still runs one database query (the route model binding). The cost of a HIT is not measured separately.
+- The robust evidence of the cache is the evidence that does not depend on the session level: the query counts per route (a HIT removes 3 or 4 of the queries of a detail or filtered list and all queries of a plain list and of categories, see "Query counts per route"), the MySQL statement counts (-36.7 percent in `Com_stmt_execute` over the two runs, see below), the HIT shares (99.19 and 98.92 percent) and the throughput (+12.6 percent overall). One caution on throughput: it is a whole-system figure and the uncached routes rose by the same proportion, so it carries the same session and queue-effect caveat. The only same-code comparison between two sessions on record (`step2-indexes` against `step3-pre`) moved requests per second by -2.1 percent.
+- p99 changes are all within the run-to-run spread, and so is the p95 change of `orders_admin_list`. The p50 changes and the other p95 changes are outside it, which only says that the two runs of each session agree with each other.
+- No cache-only speedup is claimed. Isolating the cache effect would need a same-session control with the cache bypassed. It was not done.
+
+MySQL status counters (cumulative; the performance schema table was truncated right before run 1, the status counters were read before run 1 and after run 2, so the difference covers runs 1 and 2 with their `setup()` requests and the 60 s pause between them)
+- Before: `Com_select` 25464, `Com_stmt_close` 25029, `Com_stmt_execute` 25029, `Com_stmt_prepare` 30153, `Connections` 10732, `Questions` 56616.
+- After: `Com_select` 34665, `Com_stmt_close` 34228, `Com_stmt_execute` 34228, `Com_stmt_prepare` 41175, `Connections` 14130, `Questions` 75965.
+- Difference: `Com_select` +9201, `Com_stmt_execute` +9199, `Com_stmt_close` +9199, `Com_stmt_prepare` +11022, `Connections` +3398, `Questions` +19349.
+- Statement counts by event name (table cleared before run 1): Execute 9199, Close stmt 9199, Prepare 9191, Quit 3392, set_option 3372, change_db 3372, Ping 23, select 2, error 2, truncate 1, show_status 1. As in Steps 2 and 3, the `Com_stmt_prepare` status counter rose by more than the Prepare events (11022 against 9191). Not investigated.
+- `step3-pre` against `step4-redis`, both over two runs (`step3-pre` values from "Step 3"):
+  - `Com_stmt_execute`: +14535 -> +9199 (-36.7 percent). `Com_select`: +14537 -> +9201 (-36.7 percent). `Com_stmt_prepare`: +17434 -> +11022 (-36.8 percent).
+  - `Questions`: +25940 -> +19349 (-25.4 percent). `Connections`: +3833 -> +3398 (-11.3 percent).
+  - Executes per counted request (the counters also contain the `setup()` requests, so this is approximate): 4.06 in `step3-pre` (14535 over 3577 requests) and 2.28 in `step4-redis` (9199 over 4029 requests).
+- These counters show how many statements were sent, not which SQL was slow. They are not affected by the session level the way latency is, but the two measurements still differ in the number of requests sent (more requests in `step4-redis`), which makes the drop in statements per request larger than the drop in the totals.
+
+Query counts per route (the reviewer's section, counter ON, single requests through `localhost:8080`, right after `products:cache-flush` so the first request of a route is a MISS and the second a HIT; summed query time in ms; NOT comparable with k6)
+- `GET /categories`: MISS 1 query (2.07 ms), HIT 0 queries (0 ms).
+- `GET /products?page=1&per_page=15`: MISS 4 queries (4.65 ms), HIT 0 queries (0 ms).
+- `GET /products?page=1&per_page=15&category_id=1`: MISS 5 queries (6.79 ms), HIT 1 query (1.99 ms). The remaining query is the `exists` validation of `category_id`.
+- `GET /products/103`: MISS 4 queries (3.64 ms), HIT 1 query (1.79 ms). The remaining query is the route model binding.
+- A MISS runs the same queries as the code before the cache (Step 1: 1, 4, 5 and 4 queries).
+- The `GetStock` gRPC call is not a database query and is not in this counter. It stays on every list and detail request, HIT or MISS.
+- `PERF_QUERY_LOG` was set back to false (printed `PERF_QUERY_LOG=false`).
+
+Redis diagnostics (the reviewer, `redis-cli`, after run 2 and before the regression checks; read-only)
+- `INFO memory`: `used_memory` 3335880 (3.18M), `used_memory_peak` 3563672 (3.40M), `used_memory_rss` 15589376 (14.87M), `used_memory_dataset` 2336760, `maxmemory` 0, `maxmemory_policy` noeviction, `mem_fragmentation_ratio` 4.73, allocator jemalloc-5.3.0. `INFO memory` describes the whole Redis instance, not one database. The high fragmentation ratio goes with a very small dataset and was not investigated.
+- `DBSIZE` on database 1 (the cache store): 520 keys. This count holds every key of the store: catalog entries of all namespaces, the rate limiter counters and the JWT blacklist. It was not split by kind.
+- `CONFIG GET save`: `3600 1 300 100 60 10000`.
+- Sample catalog keys (the Laravel cache prefix `laravel-database-laravel-cache-` comes first): `products:v1:l:2:4:<sha1>` (namespace 2, list version 4) and `products:v1:d:2:137:0` (namespace 2, product 137, product version 0). List version 4 matches the four catalog writes of the manual checks (create, rename, image upload, delete).
+- The `redis` container memory in docker stats stayed about 15 MiB during the runs (see below).
+
+docker stats for the run windows (CPU in percent, 100 percent = one core; memory in MiB)
+- Deviation from the plan: the stats loop was started at 20:31:55, before the flush (20:32:13), instead of right before run 1, and it ran until 20:41:59 (the last real sample; one more line at 20:42:06 holds `--` placeholders, is not a sample and is outside every window). So `perf/results/step4-redis-docker-stats.txt` also contains the warm-up, the discarded replay, the pauses and the start of the regression checks. The file was not edited. Only the run windows below are used for any CPU or memory figure.
+- Windows given by the reviewer (local time, UTC+3): run 1 from 20:36:25 to 20:37:51, run 2 from 20:38:51 to 20:40:17. Each holds 12 samples, about 7.2 s apart. They start at the `docker compose run` command, so the first 3 samples of each window were taken during the k6 `setup()` (app CPU 52 to 68 percent), which lowers the means.
+- Run 1, window 20:36:25 to 20:37:51 (12 samples), mean / peak CPU: `app` 94.19 / 121.45, `mysql` 30.77 / 73.85, `nginx` 1.29 / 1.97, `redis` 2.53 / 4.32, `inventory` 1.86 / 5.27, `inventory-db` 0.78 / 1.15, `k6` 3.18 / 4.27. Memory mean / peak: `app` 140.2 / 145.2, `mysql` 664.3 / 664.4, `redis` 15.2 / 15.4, `inventory` 38.6 / 38.9, `inventory-db` 495.1 / 495.1, `nginx` 8.8 / 8.9, `k6` 28.3 / 31.9.
+- Run 2, window 20:38:51 to 20:40:17 (12 samples), mean / peak CPU: `app` 99.79 / 118.70, `mysql` 30.58 / 58.48, `nginx` 1.41 / 2.01, `redis` 3.16 / 7.94, `inventory` 1.94 / 6.00, `inventory-db` 1.33 / 7.32, `k6` 3.85 / 6.03. Memory mean / peak: `app` 139.2 / 144.8, `mysql` 664.4 / 664.5, `redis` 15.2 / 15.2, `inventory` 39.3 / 39.8, `inventory-db` 495.1 / 495.1, `nginx` 8.8 / 9.0, `k6` 27.1 / 29.5.
+- For comparison with the `step3-pre` figures only, the same samples under the window rule of Steps 2 and 3 (62 s to 2 s before the time the summary file was written: 20:37:49 and 20:40:16, so 20:36:47 to 20:37:47 with 8 samples and 20:39:14 to 20:40:14 with 9 samples; these are subsets of the windows above and exclude the `setup()` samples):
+  - Run 1, mean / peak CPU: `app` 112.04 / 121.45, `mysql` 42.41 / 73.85, `nginx` 1.79 / 1.97, `redis` 3.20 / 4.32, `inventory` 2.55 / 5.27, `inventory-db` 0.93 / 1.15, `k6` 3.97 / 4.27.
+  - Run 2, mean / peak CPU: `app` 112.34 / 118.70, `mysql` 40.40 / 58.48, `nginx` 1.81 / 2.01, `redis` 3.59 / 7.94, `inventory` 2.29 / 6.00, `inventory-db` 0.89 / 1.09, `k6` 4.69 / 6.03.
+  - `step3-pre` under the same rule, run 1 / run 2 mean CPU: `app` 127.68 / 120.40, `mysql` 50.48 / 33.24, `redis` 3.25 / 3.13, `nginx` 1.62 / 1.56, `inventory` 3.22 / 3.31, `k6` 4.80 / 4.96.
+- Reading: coarse (8 to 9 samples per run, about 7 s apart) and not used as evidence for the cache. `mysql` mean CPU differed between the two runs of `step3-pre` alone (50.48 and 33.24), so a difference of that size is within what one session shows. Container memory also differs by session (`app` about 144 MiB here against about 167 MiB in `step3-pre`, `mysql` about 664 MiB against about 692 MiB), as it already did between `step2-indexes` and the baseline. `redis` memory stayed about 15 MiB.
+
+Manual checks (the reviewer, temporary product `tmp-cache-check`, id 5003, created through the admin API; all behaved as expected)
+- Detail: MISS then HIT. List page 1 (the new product first): MISS then HIT.
+- Rename (`PATCH`): the detail is a MISS with the new name, then a HIT. The list is a MISS.
+- Image upload (201): the detail is a MISS with 1 image, then a HIT.
+- Stock stays live: a HIT before the stock change shows stock 5, and a HIT after `PATCH .../stock` with adjustment +3 shows stock 8 (no MISS in between).
+- Soft delete (204): the detail is 404 without `X-Cache`, and the list (a MISS) no longer contains the product (its first item is id 5002).
+
+Regression checks after the k6 runs (the limit was back at 60 and verified before them)
+- `php artisan test`: 56 passed (507 assertions).
+- `security:proof`: 15 PASS, 0 FAIL (21 requests).
+- `orders:race-test --product=1 --count=10`: PASS, one 201 and nine 409. Product 1 stock: read 50, set to 1 (HTTP 200), 0 after the test, restored to 50 (HTTP 200). Final reads: API 50 and `inventory-db` 50.
+- `products:cache-flush` run after the checks (namespace 3).
+- Data check afterwards: users 2003, products 5003 (5002 not deleted), orders 300004 (max id 300004), order_items 750607, product_images 7570, 5003 stock rows, stock of products 1 and 2 = 50 and 100 (API and `inventory-db`), `customers.json` diff empty. The two new orders: #300003 (made by `security:proof`, cancelled by it) and the pending one of the race test (id 300004 by elimination, since max id and the order count are both 300004).
+- The dataset is therefore no longer identical to the one measured: any later k6 run (Step 5) sees 300004 orders, and the admin list has more pages. Re-read the data check before each run and explain the differences.
+
+Leftovers of the manual checks (nothing was deleted; the reviewer decides)
+- Product id 5003 (soft-deleted), its image row 7570 and the stored image file under `products/` in the public disk, and its stock row in `inventory-db` (quantity 8).
+- The temporary PNG `tmp-cache-check.png` in the Windows temp folder (outside the project).
+- Cache entries of the earlier namespaces (1 and 2) stay in Redis and expire by their TTLs.
+
+Known limits of this measurement
+- Two runs, one session, one machine. No same-session control with the cache bypassed, so the cache effect on latency is not isolated (see "Reading").
+- The discarded replay makes run 1 and run 2 start on an almost full cache (8 and 11 MISS). This measures the cache in its warm state. The cost of filling it (the MISS path) is not part of these numbers. The MISS path runs the same queries as the code before the cache, plus the write to Redis.
+- Docker stats loop started before the flush, see the deviation above.
+- Stock is live on every list and detail request, so the `GetStock` gRPC call is in every cached request. Its share of the latency is not measured.
 
 ## Step 5: ETag
 
