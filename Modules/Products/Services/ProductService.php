@@ -14,12 +14,15 @@ use Modules\Products\Models\ProductImage;
 class ProductService
 {
     public function __construct(
-        private InventoryService $inventory
+        private InventoryService $inventory,
+        private CatalogCache $catalogCache,
     ) {}
 
     /**
-     * The single entry point for every product read, so the cache of
-     * requirement 3 is added here once and nowhere else.
+     * Uncached on purpose: the write methods below call find() inside transactions to build their
+     * responses, so a cached find() could fill the cache with uncommitted data or hand the admin a
+     * stale value. The cache of requirement 3 lives in CachedProductReader, which the public read
+     * routes use and which calls these two methods on a MISS.
      */
     public function paginate(array $filters): LengthAwarePaginator
     {
@@ -75,6 +78,10 @@ class ProductService
 
             $this->storeImages($product, $images);
 
+            // Runs after the outermost commit and is dropped on rollback. A new product only
+            // changes the lists: no reader can hold a detail entry for an id that did not exist.
+            $this->invalidateCatalog(null);
+
             return $this->find($product->id);
         });
     }
@@ -82,12 +89,14 @@ class ProductService
     public function update(Product $product, array $data): Product
     {
         $product->update($data);
+        $this->invalidateCatalog($product->id);
 
         return $this->find($product->id);
     }
 
     public function adjustStock(Product $product, int $adjustment): Product
     {
+        // No cache invalidation: only the inventory service changes, and stock is never cached.
         $this->inventory->adjust($product->id, $adjustment);
 
         return $this->find($product->id);
@@ -97,6 +106,7 @@ class ProductService
     {
         // Soft delete: keeps the images and the meaning of old orders intact.
         $product->delete();
+        $this->invalidateCatalog($product->id);
     }
 
     /**
@@ -105,9 +115,23 @@ class ProductService
      */
     public function addImages(Product $product, array $images): Collection
     {
-        DB::transaction(fn () => $this->storeImages($product, $images));
+        DB::transaction(function () use ($product, $images) {
+            $this->storeImages($product, $images);
+            $this->invalidateCatalog($product->id);
+        });
 
         return $product->images()->get();
+    }
+
+    /**
+     * Moves the catalog cache versions once the write is committed. Outside a transaction
+     * DB::afterCommit() runs the callback at once, inside one it runs after the outermost commit
+     * and is dropped on rollback. Called here and not from model events, because bulk inserts
+     * (perf:seed) fire no events.
+     */
+    private function invalidateCatalog(?int $productId): void
+    {
+        DB::afterCommit(fn () => $this->catalogCache->invalidateProduct($productId));
     }
 
     /**
