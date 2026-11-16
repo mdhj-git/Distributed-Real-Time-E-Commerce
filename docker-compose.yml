@@ -48,6 +48,26 @@ services:
       interval: 10s
       retries: 10
 
+  # r4: message broker
+  # Dev-only credentials; override RABBITMQ_USER / RABBITMQ_PASSWORD in .env.
+  # Management UI: http://localhost:15672
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-shop}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-shop_dev}
+    ports:
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
   inventory:
     build:
       context: .
@@ -108,3 +128,4 @@ services:
 volumes:
   mysql_data:
   inventory_db_data:
+  rabbitmq_data:
