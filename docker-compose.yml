@@ -67,7 +67,22 @@ services:
       timeout: 10s
       retries: 10
       start_period: 30s
-
+  # r4: queue consumer.
+  # Overrides the entrypoint on purpose: composer install and migrate already
+  # run once, in the app service. Restart it after changing a listener or job:
+  #   docker compose restart worker
+  worker:
+    build:
+      context: ./docker/app
+    entrypoint: ["php", "artisan", "queue:work", "rabbitmq", "--queue=orders", "--tries=3", "--backoff=5"]
+    restart: unless-stopped
+    volumes:
+      - .:/var/www
+    depends_on:
+      app:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
   inventory:
     build:
       context: .
