@@ -1,6 +1,6 @@
 # Requirement 3: performance report
 
-Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 on reads, write-path per-item insert fixed (bulk insert). Step 2: analysis done, no new index is justified, no migration. One query rewrite (deferred join in `OrderService::paginate`) is implemented and checked (JSON identical). The `step2-indexes` k6 run, the regression checks and the write-cost benchmark are still to be done.
+Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 on reads, write-path per-item insert fixed (bulk insert). Step 2: analysis done, no new index is justified, no migration. One query rewrite (deferred join in `OrderService::paginate`) is implemented and checked (JSON identical). The `step2-indexes` k6 run is recorded (2 valid runs, lower than the baseline on every route, NOT attributed to the rewrite: the same-day control run was not done, by decision). The regression checks passed. The scratch-table write-cost and read-side benchmark is done and cleaned up. Zero indexes were added.
 
 Rules for this file:
 - Every performance number (p50, p95, p99, requests per second, data volume) comes only from k6 output pasted by the reviewer, or from the JSON files in `perf/results/`. Nothing is estimated.
@@ -37,7 +37,7 @@ Per route and metric, one value per layer. `-` means not measured yet.
 Product list (`products_list`)
 - baseline (run 1 / run 2): p50 685.84 / 673.28 ms; p95 810.14 / 793.43 ms; p99 862.84 / 854.21 ms; requests 497 / 503; body bytes 6829055 / 6894948
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
-- step2-indexes: -
+- step2-indexes (run 1 / run 2): p50 668.40 / 670.47 ms; p95 771.59 / 763.45 ms; p99 807.28 / 802.71 ms; requests 524 / 521; body bytes 7169504 / 7107567. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - step3 (Redis cache): reserved
 - step4: reserved
 - step5 (ETag): reserved
@@ -46,31 +46,31 @@ Product list (`products_list`)
 Product detail (`product_detail`)
 - baseline (run 1 / run 2): p50 674.22 / 654.11 ms; p95 786.79 / 771.84 ms; p99 822.73 / 848.75 ms; requests 374 / 377; body bytes 156751 / 157590
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
-- step2-indexes: -
+- step2-indexes (run 1 / run 2): p50 646.82 / 645.45 ms; p95 737.75 / 738.55 ms; p99 780.01 / 774.52 ms; requests 388 / 389; body bytes 162568 / 162957. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - steps 3 to 6: reserved
 
 Customer order list (`orders_customer_list`)
 - baseline (run 1 / run 2): p50 662.31 / 654.20 ms; p95 779.76 / 778.31 ms; p99 825.85 / 838.71 ms; requests 338 / 347; body bytes 1898452 / 1948884
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
-- step2-indexes: -
+- step2-indexes (run 1 / run 2): p50 646.85 / 642.99 ms; p95 742.89 / 746.08 ms; p99 790.18 / 767.48 ms; requests 359 / 356; body bytes 2017822 / 2000418. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - steps 3 to 6: reserved
 
 Customer order detail (`order_detail`)
 - baseline (run 1 / run 2): p50 660.45 / 646.76 ms; p95 776.58 / 774.86 ms; p99 820.78 / 827.65 ms; requests 272 / 276; body bytes 107536 / 109079
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
-- step2-indexes: -
+- step2-indexes (run 1 / run 2): p50 635.29 / 635.81 ms; p95 726.50 / 726.33 ms; p99 756.23 / 752.62 ms; requests 281 / 279; body bytes 111074 / 110289. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - steps 3 to 6: reserved
 
 Admin order list (`orders_admin_list`)
 - baseline (run 1 / run 2): p50 773.45 / 767.29 ms; p95 988.22 / 955.48 ms; p99 1041.77 / 998.20 ms; requests 266 / 269; body bytes 2048246 / 2071963
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
-- step2-indexes: -
+- step2-indexes (run 1 / run 2): p50 716.45 / 733.32 ms; p95 832.03 / 844.55 ms; p99 866.30 / 880.26 ms; requests 280 / 277; body bytes 2155456 / 2132503. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - steps 3 to 6: reserved
 
 Overall (tag `phase:main`): p50, p95, p99, requests per second, response body bytes (`data_received` sub-metric is n/a in k6)
 - baseline (run 1 / run 2 / mean): p50 682.58 / 671.84 / 677.21 ms; p95 858.56 / 860.94 / 859.75 ms; p99 982.35 / 941.09 / 961.72 ms; requests 1747 / 1772; req/s 29.12 / 29.53 / 29.33; body bytes 11040040 / 11182464
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
-- step2-indexes: -
+- step2-indexes (run 1 / run 2 / mean): p50 659.57 / 661.29 / 660.43 ms; p95 773.41 / 780.96 / 777.19 ms; p99 828.60 / 841.48 / 835.04 ms; requests 1832 / 1822; req/s 30.53 / 30.37 / 30.45; body bytes 11616424 / 11513734. Mean and change against the baseline: see "Step 2 k6 measurement" below.
 - steps 3 to 6: reserved
 
 ## Baseline
@@ -327,14 +327,203 @@ Reading of the evidence (Stage A conclusions)
 
 Regression checks so far
 - `php artisan test`: 56 passed (507 assertions). The test database is `sqlite` `:memory:` (forced by `phpunit.xml`; the container has no `DB_*`, `APP_ENV` or `CACHE_*` variables that could override it; cache `array`, queue `sync`; no test references MySQL, Redis or gRPC). Real MySQL row counts were identical before and after the run (users 2003, orders 300000, order_items 750603, notifications 0, products 5002).
-- `security:proof` and `orders:race-test` are NOT run yet. By decision they run after the `step2-indexes` k6 run, because they write real orders and the k6 run must use the dataset identical to the baseline (300000 orders).
+- `security:proof` and `orders:race-test` were run AFTER the `step2-indexes` k6 run (by decision, because they write real orders and the k6 run had to use the dataset identical to the baseline). Results are under "Regression checks after the k6 run" below.
+
+### Step 2 k6 measurement (label `step2-indexes`)
+
+Source of every number in this section: the raw k6 output pasted by the reviewer and `perf/results/step2-indexes-1.json` and `-2.json` (the baseline numbers come from `baseline-1.json` and `-2.json`). All means, differences and percentages were computed from those files by script. Nothing is estimated.
+
+What was measured
+- The code under test is the working tree with the deferred join in `OrderService::paginate` (commit `dbd5936`; the tree was at `97b0bdd`). No index was added in Step 2, so nothing here can be attributed to an index.
+- Same scenario as the baseline: 20 VUs, constant, 60 s, no think time, a warm-up of 10 VUs for 20 s and a 60 s pause first. Dataset: 300000 orders (`max(id)` 300000 after the runs), regenerated with `perf:seed` seed 42 after the baseline, `customers.json` unchanged.
+- `API_RATE_LIMIT_PER_MINUTE` was raised to 100000 for the runs and restored to 60 afterwards (`config:show ratelimit` printed 60). `PERF_QUERY_LOG=false` after the runs. The slow query log stayed off.
+- Run 1 finished at 22:15:01 and run 2 at 22:17:27 (local time, UTC+3, as in the docker stats timestamps). The two end times are 146 s apart: an 82.8 s run (including `setup()`) plus about 63 s, which is the 60 s pause in the command plus container start-up.
+- Both runs: `RUN VALID` yes, 0 responses with 429, 0 with 5xx, 0 with `stock:null`, failed rate 0 percent. p95 of the two runs differs by 1.0 percent (773.41 and 780.96), so no third run was needed.
+- Evidence files: `perf/results/step2-indexes-1.json`, `perf/results/step2-indexes-2.json`, `perf/results/step2-indexes-docker-stats.txt` (UTF-16 text, as `perf/MEASURE.md` warns for `Tee-Object` on Windows PowerShell 5.1), `perf/results/step2-indexes-transcript.txt` (the reviewer's terminal transcript; kept local and not committed, because its header holds the machine name and the Windows user name, and its content is already in the JSON files and in this report). Screenshots (supporting only, saved by the reviewer, never renamed or moved): `docs/r3-evidence/step2-indexes-run1.png`, `docs/r3-evidence/step2-indexes-run2.png`.
+
+MySQL status counters (cumulative, read after the warm-up and after run 2, so the difference covers runs 1 and 2 with their `setup()` requests)
+- Before: `Com_select` 10685, `Com_stmt_close` 10447, `Com_stmt_execute` 10447, `Com_stmt_prepare` 12295, `Connections` 2576, `Questions` 14948.
+- After: `Com_select` 25532, `Com_stmt_close` 25292, `Com_stmt_execute` 25292, `Com_stmt_prepare` 30101, `Connections` 6461, `Questions` 41404.
+- Difference: `Com_select` +14847, `Com_stmt_execute` +14845, `Com_stmt_close` +14845, `Com_stmt_prepare` +17806, `Connections` +3885, `Questions` +26456.
+- Statement counts by event name (table cleared before run 1): Prepare 14845, Execute 14845, Close stmt 14845, Quit 3884, change_db 3860, set_option 3859, Ping 23, select 2, error 2, truncate 1, show_status 1. The `Com_stmt_prepare` status counter rose by more than the 14845 prepares in this table. This was not investigated.
+- `Connections` rose by 3885 for 3654 counted requests (1832 + 1822) plus the `setup()` requests of the two runs, so a new connection per request still looks to hold. These counters show how many statements were sent. They do not show which SQL was slow.
+
+Comparison against the baseline (mean of 2 runs each, baseline -> `step2-indexes`; req/s = requests / 60)
+
+How "within run-to-run spread" is decided here: the absolute change of the means is compared with the larger of the two run-to-run differences (`|run 1 - run 2|` of the baseline, `|run 1 - run 2|` of `step2-indexes`). With two runs per side this is a rough guide and not a statistical test. It only measures how much two runs in one session differ from each other. It does not measure how much the whole level moves from one day to another.
+
+- Overall (`phase:main`)
+  - p50: 677.21 -> 660.43 ms (-16.78 ms, -2.5%). Runs: baseline 682.58 / 671.84, step2-indexes 659.57 / 661.29. Run-to-run difference: baseline 10.74, step2-indexes 1.72. outside the observed run-to-run spread.
+  - p95: 859.75 -> 777.19 ms (-82.56 ms, -9.6%). Runs: baseline 858.56 / 860.94, step2-indexes 773.41 / 780.96. Run-to-run difference: baseline 2.38, step2-indexes 7.56. outside the observed run-to-run spread.
+  - p99: 961.72 -> 835.04 ms (-126.68 ms, -13.2%). Runs: baseline 982.35 / 941.09, step2-indexes 828.60 / 841.48. Run-to-run difference: baseline 41.26, step2-indexes 12.88. outside the observed run-to-run spread.
+  - req/s: 29.33 -> 30.45 (+1.13, +3.8%). Runs: baseline 29.12 / 29.53, step2-indexes 30.53 / 30.37. Run-to-run difference: baseline 0.42, step2-indexes 0.17. outside the observed run-to-run spread.
+- Product list (`products_list`)
+  - p50: 679.56 -> 669.44 ms (-10.12 ms, -1.5%). Runs: baseline 685.84 / 673.28, step2-indexes 668.40 / 670.47. Run-to-run difference: baseline 12.56, step2-indexes 2.07. within run-to-run spread.
+  - p95: 801.78 -> 767.52 ms (-34.26 ms, -4.3%). Runs: baseline 810.14 / 793.43, step2-indexes 771.59 / 763.45. Run-to-run difference: baseline 16.71, step2-indexes 8.14. outside the observed run-to-run spread.
+  - p99: 858.53 -> 804.99 ms (-53.53 ms, -6.2%). Runs: baseline 862.84 / 854.21, step2-indexes 807.28 / 802.71. Run-to-run difference: baseline 8.63, step2-indexes 4.58. outside the observed run-to-run spread.
+  - req/s: 8.33 -> 8.71 (+0.38, +4.5%). Runs: baseline 8.28 / 8.38, step2-indexes 8.73 / 8.68. Run-to-run difference: baseline 0.10, step2-indexes 0.05. outside the observed run-to-run spread.
+- Product detail (`product_detail`)
+  - p50: 664.17 -> 646.14 ms (-18.03 ms, -2.7%). Runs: baseline 674.22 / 654.11, step2-indexes 646.82 / 645.45. Run-to-run difference: baseline 20.11, step2-indexes 1.36. within run-to-run spread.
+  - p95: 779.32 -> 738.15 ms (-41.16 ms, -5.3%). Runs: baseline 786.79 / 771.84, step2-indexes 737.75 / 738.55. Run-to-run difference: baseline 14.95, step2-indexes 0.80. outside the observed run-to-run spread.
+  - p99: 835.74 -> 777.27 ms (-58.48 ms, -7.0%). Runs: baseline 822.73 / 848.75, step2-indexes 780.01 / 774.52. Run-to-run difference: baseline 26.02, step2-indexes 5.49. outside the observed run-to-run spread.
+  - req/s: 6.26 -> 6.48 (+0.22, +3.5%). Runs: baseline 6.23 / 6.28, step2-indexes 6.47 / 6.48. Run-to-run difference: baseline 0.05, step2-indexes 0.02. outside the observed run-to-run spread.
+- Customer order list (`orders_customer_list`)
+  - p50: 658.26 -> 644.92 ms (-13.33 ms, -2.0%). Runs: baseline 662.31 / 654.20, step2-indexes 646.85 / 642.99. Run-to-run difference: baseline 8.11, step2-indexes 3.86. outside the observed run-to-run spread.
+  - p95: 779.04 -> 744.49 ms (-34.55 ms, -4.4%). Runs: baseline 779.76 / 778.31, step2-indexes 742.89 / 746.08. Run-to-run difference: baseline 1.45, step2-indexes 3.19. outside the observed run-to-run spread.
+  - p99: 832.28 -> 778.83 ms (-53.45 ms, -6.4%). Runs: baseline 825.85 / 838.71, step2-indexes 790.18 / 767.48. Run-to-run difference: baseline 12.86, step2-indexes 22.70. outside the observed run-to-run spread.
+  - req/s: 5.71 -> 5.96 (+0.25, +4.4%). Runs: baseline 5.63 / 5.78, step2-indexes 5.98 / 5.93. Run-to-run difference: baseline 0.15, step2-indexes 0.05. outside the observed run-to-run spread.
+- Customer order detail (`order_detail`)
+  - p50: 653.60 -> 635.55 ms (-18.05 ms, -2.8%). Runs: baseline 660.45 / 646.76, step2-indexes 635.29 / 635.81. Run-to-run difference: baseline 13.69, step2-indexes 0.52. outside the observed run-to-run spread.
+  - p95: 775.72 -> 726.41 ms (-49.30 ms, -6.4%). Runs: baseline 776.58 / 774.86, step2-indexes 726.50 / 726.33. Run-to-run difference: baseline 1.72, step2-indexes 0.17. outside the observed run-to-run spread.
+  - p99: 824.21 -> 754.43 ms (-69.79 ms, -8.5%). Runs: baseline 820.78 / 827.65, step2-indexes 756.23 / 752.62. Run-to-run difference: baseline 6.87, step2-indexes 3.62. outside the observed run-to-run spread.
+  - req/s: 4.57 -> 4.67 (+0.10, +2.2%). Runs: baseline 4.53 / 4.60, step2-indexes 4.68 / 4.65. Run-to-run difference: baseline 0.07, step2-indexes 0.03. outside the observed run-to-run spread.
+- Admin order list (`orders_admin_list`)
+  - p50: 770.37 -> 724.89 ms (-45.48 ms, -5.9%). Runs: baseline 773.45 / 767.29, step2-indexes 716.45 / 733.32. Run-to-run difference: baseline 6.16, step2-indexes 16.88. outside the observed run-to-run spread.
+  - p95: 971.85 -> 838.29 ms (-133.56 ms, -13.7%). Runs: baseline 988.22 / 955.48, step2-indexes 832.03 / 844.55. Run-to-run difference: baseline 32.74, step2-indexes 12.52. outside the observed run-to-run spread.
+  - p99: 1019.98 -> 873.28 ms (-146.70 ms, -14.4%). Runs: baseline 1041.77 / 998.20, step2-indexes 866.30 / 880.26. Run-to-run difference: baseline 43.57, step2-indexes 13.96. outside the observed run-to-run spread.
+  - req/s: 4.46 -> 4.64 (+0.18, +4.1%). Runs: baseline 4.43 / 4.48, step2-indexes 4.67 / 4.62. Run-to-run difference: baseline 0.05, step2-indexes 0.05. outside the observed run-to-run spread.
+
+What is within the run-to-run spread, and what is not
+- Within the spread: `products_list` p50 (-1.5 percent) and `product_detail` p50 (-2.7 percent). Every other change in the list above is outside the spread observed in these two pairs of runs.
+- The two `step2-indexes` runs agree closely with each other (overall p95 1.0 percent apart, p50 0.3 percent apart). The two baseline runs agree closely on overall p95 (2.38 ms apart) and less on p50 (10.74 ms) and p99 (41.26 ms).
+- Largest change by route: `orders_admin_list` (p50 -5.9 percent, p95 -13.7 percent, p99 -14.4 percent, req/s +4.1 percent).
+- Routes that do not call the changed code also changed: `products_list` p95 -4.3 percent, `product_detail` p95 -5.3 percent, `order_detail` p95 -6.4 percent (p99 -6.2 to -8.5 percent for these three; req/s +2.2 to +4.5 percent). `orders_customer_list` does call the changed code, but its k6 pages never exceed offset 30, and its p95 changed by -4.4 percent.
+- Overall: p50 -2.5 percent, p95 -9.6 percent, p99 -13.2 percent, req/s +3.8 percent.
+
+docker stats per container for the two run windows (CPU in percent, 100 percent = one core; memory in MiB)
+
+Window used: 62 s to 2 s before the time the summary file was written, to allow about 2 s between the end of the load and the file write. This gives 8 samples for run 1 (22:14:03 to 22:14:53) and 9 for run 2 (22:16:27 to 22:17:24). Samples are about 7 s apart, so the numbers are coarse. The strict 60 s window of `perf/MEASURE.md` section 4 would add one idle sample at 22:15:00.7 to run 1 (app CPU 2.97 percent) and drop the sample at 22:16:27.0 from run 2. With that strict window the app CPU mean is 107.50 percent (run 1) and 122.08 percent (run 2), and the mysql CPU mean is 46.81 percent (run 1) and 43.44 percent (run 2). The `app` and `mysql` peaks do not change.
+- Run 1, mean / peak CPU, mean / peak memory:
+  - `app`: 120.56 / 127.32 percent, 116.7 / 117.5 MiB.
+  - `mysql`: 52.57 / 104.54 percent, 590.3 / 590.4 MiB. The peak is one sample (22:14:24).
+  - `nginx`: 1.68 / 1.94 percent, 8.8 / 8.9 MiB.
+  - `redis`: 3.73 / 7.29 percent, 12.9 / 12.9 MiB.
+  - `inventory`: 3.69 / 7.88 percent, 37.5 / 38.7 MiB.
+  - `inventory-db`: 1.77 / 7.81 percent, 474.4 / 474.4 MiB.
+  - `k6`: 4.31 / 6.31 percent, 27.4 / 28.6 MiB.
+- Run 2, mean / peak CPU, mean / peak memory:
+  - `app`: 121.58 / 128.97 percent, 118.1 / 119.3 MiB.
+  - `mysql`: 44.01 / 55.48 percent, 590.4 / 590.4 MiB.
+  - `nginx`: 1.73 / 1.96 percent, 8.8 / 8.8 MiB.
+  - `redis`: 3.03 / 6.02 percent, 13.0 / 13.1 MiB.
+  - `inventory`: 2.51 / 4.19 percent, 39.3 / 39.7 MiB.
+  - `inventory-db`: 0.86 / 0.94 percent, 474.4 / 474.4 MiB.
+  - `k6`: 4.51 / 5.57 percent, 26.3 / 27.2 MiB.
+- Baseline values recorded earlier (whole-minute windows, a different window rule): `app` about 116 and 118 percent average with a peak of 126; `mysql` about 60 and 52 percent average with a peak of 85; `nginx` under 2 percent; memory `app` about 156 MB and `mysql` about 671 MB. The windows differ, so this is only a rough comparison.
+- Reading: the `app` container is busy at about 120 percent in both sets, which is what a 5-worker PHP-FPM pool under 20 VUs looks like. The `mysql` mean CPU is lower than the baseline mean in both runs, but the sample count is small and the windows are not the same. Container memory differs from the baseline (`app` about 117 MiB against about 156 MB, `mysql` about 590 MiB against about 671 MB), so the environment was not in the same state as on the baseline day.
+
+Interpretation (kept to what the data supports)
+- All five routes and the overall figures are lower than the baseline, and requests per second are higher. The two `step2-indexes` runs agree with each other.
+- The change is larger on `orders_admin_list` than on the other routes (p95 -13.7 percent against -4.3 to -6.4 percent). The query-time saving that `EXPLAIN ANALYZE` showed for deep and far admin pages points the same way, and 60 percent of the k6 admin requests ask for deep or far pages. This is consistent with a deferred-join effect on that route. It does not prove it.
+- The routes that do not use the changed code also improved. Two explanations fit and this data cannot separate them:
+  - The system is queue-bound (20 VUs, 5 PHP workers). If admin requests need less service time, workers free up sooner and every route waits less. Then part of the improvement on the untouched routes would itself be an effect of the deferred join.
+  - The conditions differed from the baseline day. The baseline files are from 2026-11-12 and this measurement from 2026-11-15. The database was regenerated in between (same seed and data, but page layout, statistics and buffer pool state differ), the container memory figures differ, and the host state is not controlled. A level shift from such differences would move every route.
+- The run-to-run comparison used above only compares repeats inside one session. It cannot rule out a day-to-day level difference. No claim is made about what share of the change the deferred join caused.
+- To prove the effect of the rewrite, a same-day control run is needed: the parent commit of the deferred join (`7d4943f`), the same dataset, the same procedure and label, run in the same session as a new `step2-indexes` run. It was NOT done, by the reviewer's decision (time). So the numbers above are a before and after on different days, not a controlled experiment, and the improvement is not attributed to the deferred join.
+- Not measured and not claimed: any effect on the write path, any effect of caching, and any effect of an index.
+
+### Regression checks after the k6 run
+- Code state: the deferred join (`dbd5936`), HEAD `97b0bdd`. `PERF_QUERY_LOG=false` and `API_RATE_LIMIT_PER_MINUTE=60` confirmed afterwards.
+- `php artisan test`: 56 passed (see above, run before the k6 run).
+- `security:proof`: 15 PASS, 0 FAIL (21 requests). It created order #300001 (customer B, user 3) and cancelled it itself.
+- `orders:race-test --product=1 --count=10`: PASS, one 201 and nine 409, final stock 0 as printed by the command. It created order #300002 (user 2, status `pending`), which stays.
+- Product 1 stock, every value READ (none inferred), through the API (`GET /api/v1/products/1`) and gRPC (`GetStock`, via grpcurl), and `inventory-db` where noted:
+  - Before `security:proof`: API 50, gRPC 50, `inventory-db` 50. Product 2: 100 on all three.
+  - After `security:proof`: API 50, gRPC 50 (product 2: 100).
+  - PATCH to 1 (`adjustment` -49, computed from the value read, 50): HTTP 200. Read afterwards: API 1, gRPC 1.
+  - After the race test: API 0, `inventory-db` 0. gRPC printed `{"productId": "1"}` without `quantity`: proto3 JSON omits a zero value, so the gRPC reading is "field absent", and the API and `inventory-db` readings are the numeric 0.
+  - Restore to 50 (`adjustment` +50, computed from the value read, 0): HTTP 200. Read afterwards: API 50, gRPC 50, `inventory-db` 50. Product 2 stayed 100.
+- Dataset after the checks: `orders` 300002 (max id 300002), `order_items` 750605, `user_notifications` 3, `users` 2003. The two extra orders are #300001 (cancelled) and #300002 (pending). The dataset is therefore no longer identical to the baseline dataset (300000 orders). Any later k6 run on it differs by two orders (the admin list then has 15001 pages, the last one with 2 rows). The scratch benchmark copies only ids 1 to 300000 (orders) and 1 to 750603 (order items), so it is not affected.
+- Not changed by these checks: no migration, no code, no commit.
+
+### Write cost and read side: scratch-table benchmark
+
+Everything in this section was measured on SCRATCH COPIES of `orders` and `order_items`, not on production tables and not through the application. The real tables were only read. No migration was run and no index was added or dropped: the decision stays "zero indexes added in Step 2".
+
+Evidence
+- `docs/r3-evidence/step2-write-cost-raw.txt`: the raw output of the whole run (create, three write rounds, reload, read-side runs, drop and verification). SQL, plans, timings and sizes only, no credentials.
+- Screenshot of the two summary blocks (WRITE COST and READ SIDE, supporting only, saved by the reviewer, never renamed or moved): `docs/r3-evidence/step2-write-cost-summary-and-read-side-summary.png`.
+
+Method
+- Six scratch tables, created and later dropped by exact name: `scratch_orders_v0`, `scratch_orders_v1`, `scratch_orders_v2`, `scratch_order_items_v0`, `scratch_order_items_v1`, `scratch_order_items_v2`. Each is a copy of ids 1 to 300000 (orders) and 1 to 750603 (order items).
+  - `orders`: v0 = primary key only, v1 = plus `(user_id, id)`, v2 = all existing indexes (plus unique `reference`).
+  - `order_items`: v0 = primary key only, v1 = plus `order_id`, v2 = all existing indexes (plus `product_id`).
+- Write side: timed load by `INSERT INTO scratch SELECT * FROM real WHERE id BETWEEN a AND b` in chunks of 2000 ids, autocommit, `READ COMMITTED`, binlog ON (ROW). After the load, a timed `UPDATE` of a non-indexed column, a timed `UPDATE` of an indexed column and a timed `DELETE`. Three rounds, median reported. Index sizes come from `mysql.innodb_index_stats` after `ANALYZE TABLE` on the scratch table (statistics of the real tables were not touched).
+- Read side: the three scratch versions were reloaded with the pristine copy (no `UPDATE` or `DELETE` afterwards). For each query and version: `EXPLAIN`, then 2 warm-up runs (not counted) and 7 measured `EXPLAIN ANALYZE` runs, median of the server-side time of the top plan node.
+- Run on 2026-11-16, MySQL 8.4.13, `innodb_buffer_pool_size` 128 MB.
+
+Write cost (medians of 3 runs, seconds)
+- `orders` (300000 rows)
+  - v0, primary key only: load 3.84; non-indexed `UPDATE` 0.15 (19217 rows changed of 20000 matched); `UPDATE` of `user_id` 0.16 (20000 rows, not indexed in v0); `DELETE` 0.09 (20000 rows); size 29.6 MB.
+  - v1, plus `(user_id, id)`: load 5.26 (x1.37); non-indexed `UPDATE` 0.15; `UPDATE` of `user_id` 0.25; `DELETE` 0.16; size 40.1 MB (primary 29.6, index 10.5).
+  - v2, plus unique `reference` (all existing): load 7.27 (x1.90); non-indexed `UPDATE` 0.18; `UPDATE` of `user_id` 0.29; `DELETE` 0.31; size 64.7 MB (index `reference` 24.6).
+  - Load runs (s): v0 4.67 / 3.84 / 3.51, v1 5.26 / 5.09 / 5.41, v2 7.04 / 10.16 / 7.27.
+- `order_items` (750603 rows)
+  - v0, primary key only: load 8.98; non-indexed `UPDATE` (`quantity`) 0.31; `UPDATE` of `product_id` 0.31 (not indexed in v0); `DELETE` 0.22 (50000 rows each); size 61.6 MB.
+  - v1, plus `order_id`: load 10.54 (x1.17); non-indexed `UPDATE` 0.33; `UPDATE` of `product_id` 0.31 (still not indexed in v1); `DELETE` 0.32; size 78.2 MB (index `order_id` 16.6).
+  - v2, plus `product_id` (all existing): load 14.64 (x1.63); non-indexed `UPDATE` 0.36; `UPDATE` of `product_id` 0.85; `DELETE` 0.69; size 104.7 MB (index `product_id` 26.6).
+  - Load runs (s): v0 8.98 / 9.83 / 8.77, v1 10.93 / 10.44 / 10.54, v2 21.42 / 14.11 / 14.64.
+- Reading: every extra secondary index made the bulk load slower and the table bigger. A non-indexed column update did not get meaningfully slower (0.15 to 0.18 and 0.31 to 0.36, within noise at this scale). An update of an indexed column and a delete got slower with each index that covers the changed column or the row (`product_id` update 0.31 to 0.85, `order_items` delete 0.22 to 0.69, `orders` delete 0.09 to 0.31).
+- The reference values of the real seed (all existing indexes, from the reviewer): customers 0.42 s, products 0.48 s, images 0.49 s, orders INSERT 13.56 s, order_items INSERT 35.04 s, total 52.75 s (stock sync excluded). The scratch loads (7.27 s and 14.64 s for v2) are server-side bulk copies, so their absolute seconds are NOT comparable with the seed phases. Only the ratios between versions inside this benchmark mean something.
+
+Read side (scratch copies, warm buffer pool, median of 7, server-side ms)
+- R1a, customer order list for a heavy customer (user 4, 16478 orders, 5.49 percent of the table): `WHERE user_id = 4 ORDER BY id DESC LIMIT 15`.
+  - v0: `type=index`, `key=PRIMARY`, `Extra: Using where; Backward index scan`, 0.15 ms.
+  - v1: `type=ref`, `key=orders_user_id_id_index`, `Extra: Backward index scan`, estimated rows 32732, 0.88 ms.
+  - v2: same plan as v1, 0.86 ms.
+- R1b, same query for a light customer (user 1995, 31 orders): v0 74.50 ms (`PRIMARY` backward scan); v1 0.04 ms and v2 0.04 ms (`ref` on `orders_user_id_id_index`, estimated rows 31).
+- R2, order items of 20 orders: `WHERE order_id IN (20 ids) ORDER BY product_id`. v0: `type=ALL`, 746522 estimated rows, 478.00 ms. v1 and v2: `type=range`, `key=order_items_order_id_foreign`, 46 rows, 0.15 ms and 0.14 ms.
+- R3, order items of one product: `WHERE product_id = 103` (166 rows). v0 `ALL` 445.00 ms; v1 `ALL` 438.00 ms; v2 `type=ref`, `key=order_items_product_id_index`, 0.32 ms.
+
+The heavy-user result, as measured and what was checked afterwards
+- As measured: with the existing index the heavy-user query took 0.88 ms (0.86 ms in v2), and without it (primary key only) 0.15 ms. The index version was slower for this user.
+- Explanation (checked, read-only): without the index the plan is a backward scan of the primary key with a filter (`Using where; Backward index scan`, see the `EXPLAIN` in the raw file). A heavy customer owns 5.49 percent of all orders, so about one row in 18 matches, and the scan can stop early. On the real `orders` table with the index ignored (`IGNORE INDEX`, `EXPLAIN ANALYZE`, one run, the real table has 300002 rows) the scan read 273 rows to return the 15 rows. For the light customer (31 orders, 0.01 percent of the table) the same primary-key scan read 143304 rows (149 ms in that single run) against 1.5 ms with the index. So the early stop works only for customers who own a large share of the table. The timings of those single real-table runs were taken right after the benchmark (cold pages) and are not medians. The row counts (273 and 143304) are the evidence, the milliseconds are not.
+- Consequence: the benefit of `(user_id, id)` is large for ordinary customers and absent (even slightly negative) for the heaviest ones. The k6 customers include 10 heavy ones, 20 mid-range and 20 light ones, so both cases occur there.
+
+`order_items.product_id` has no read route today
+- No read route filters or joins `order_items` by `product_id`: the order list and the order detail read items by `order_id` only, and the Products module must not join `order_items` (module boundary rule). R3 above was therefore a test of a query the application does not run.
+- Checked read-only in `information_schema` (`KEY_COLUMN_USAGE`, `REFERENTIAL_CONSTRAINTS`): the only foreign key of `order_items` is `order_items_order_id_foreign` (`order_id` to `orders.id`, `ON DELETE CASCADE`). `product_id` is NOT a foreign key (a plain number with a name and price snapshot, by design). `order_items_product_id_index` is a plain secondary index with no constraint role.
+- It is the index with the highest write cost relative to its read use: +26.6 MB, load x1.39 against v1 (14.64 s against 10.54 s), `product_id` update 0.85 s against 0.31 s, delete 0.69 s against 0.32 s. Dropping it is NOT part of Step 2. It is only recorded as a candidate for a later decision.
+- Similarly `orders_reference_unique` (24.6 MB, load x1.38 against v1 for orders) is used by no read route. Its purpose is uniqueness of the order reference, so it is not an "unused" index in the sense of being removable.
+
+Why the `order_id` index could be dropped on the copy: `CREATE TABLE ... LIKE` does not copy foreign keys. On the real `order_items` the foreign key `order_items_order_id_foreign` needs an index on `order_id`, so a "primary key only" version (v0) is impossible there. That is why v0 exists only as a scratch copy.
+
+Limits of this benchmark
+- Scratch copies: no foreign key, no concurrent traffic, no application code in the path. The real tables were only read.
+- The load is a server-side bulk `INSERT ... SELECT` in 2000-row chunks. The application writes differently (one order row and one bulk insert of its items per request, from PHP), so absolute seconds are not application latencies and are not comparable with the `perf:seed` phases. Only the differences between versions are meaningful.
+- The `UPDATE` and `DELETE` statements are single statements of 0.1 to 0.9 s each, so their medians are coarse. The v2 load runs vary (orders 7.04 / 10.16 / 7.27, order items 21.42 / 14.11 / 14.64). The median of 3 is used for writes, of 7 for reads.
+- Reads ran on a warm buffer pool and show server-side `EXPLAIN ANALYZE` time of the top node, not request time. The real hot data is larger than the 128 MB pool, so real reads can be slower, especially for the full scans of v0.
+- Only two customers (one heavy with 16478 orders, one light with 31), one product id (103) and one set of 20 order ids were tested. Other customers or products can behave differently.
+- The `UPDATE` of an indexed column changes `user_id` (`orders`) and `product_id` (`order_items`). That is not an update the application performs. It is used only to show when an index must be maintained.
+- Sizes are InnoDB statistics after `ANALYZE TABLE` on the scratch tables.
+- The decision "zero indexes added" is not changed by these results.
+
+Disk effect of the run (read-only checks)
+- Binlog total: 207.1 MB before, 1206.7 MB after (+999.6 MB). Nothing was purged. `E:` free space: 11.92 GB before, 10.08 GB after the run and still 10.08 GB after the six scratch tables were dropped, because the Docker disk image does not shrink by itself.
+- Correction of an earlier statement: the "946 GB free" that was quoted earlier in this work was the `Avail` column of `/var/lib/mysql` inside the container. That is the nominal size of the virtual disk (1007 GB), not real free space. The real limit is the free space on `E:`.
+
+Cleanup (done and verified)
+- Before the drops, `SHOW TABLES LIKE 'scratch\_%'` listed exactly the six names above, and `USE ecommerce` was confirmed as the application's database (`config("database.connections.mysql.database")` is `ecommerce`). Then only the six approved `DROP TABLE` statements ran. Afterwards no `scratch_` table remained.
+- Real tables after the run: `orders` 300002 (max id 300002), `order_items` 750605, `users` 2003, `products` 5002, `product_images` 7569, `user_notifications` 3. The real indexes of `orders` and `order_items` are unchanged.
+
+What does an index slow down, and what does it speed up? (answer from the evidence above)
+- It slows down every write that has to maintain it. Each `INSERT` adds an entry to every secondary index: a bulk load of `orders` took x1.37 with one extra index and x1.90 with two, and of `order_items` x1.17 and x1.63. A `DELETE` removes entries from every index (orders 0.09 s to 0.31 s, order items 0.22 s to 0.69 s). An `UPDATE` pays only when it changes an indexed column (`product_id` update 0.31 s to 0.85 s). Updating a non-indexed column was not slowed (within noise).
+- It also costs disk space and buffer pool memory: `orders` grew from 29.6 MB to 64.7 MB and `order_items` from 61.6 MB to 104.7 MB with all existing indexes.
+- It speeds up reads whose `WHERE` or `ORDER BY` can use it: order items of 20 orders 478 ms to 0.15 ms, one product's order items 445 ms to 0.32 ms, a light customer's order list 74.5 ms to 0.04 ms.
+- It does not speed up everything. For the heaviest customer the plain primary-key scan was faster (0.15 ms against 0.88 ms). And no B-tree index helps the admin `count(*)` or the deep `OFFSET` (see Stage A).
+- So an index pays off only when reads that use it are frequent and selective enough to outweigh the write, disk and memory cost. In this application `orders (user_id, id)` and `order_items (order_id)` are used by read routes. `order_items (product_id)` and `orders (reference)` are not used by any read route (the second one exists for uniqueness).
+
+### Attribution of the k6 improvement
+- The k6 improvement of `step2-indexes` over the baseline is NOT attributed to the deferred join. No same-day control run was made on the parent commit (`7d4943f`). Control run: not done, by decision (time).
+- What is attributable to the deferred join: the same-session `EXPLAIN ANALYZE` (the last admin page about 150 ms with the plain query and about 70 ms with the deferred join in the median runs; 148 ms and 66 ms in the reviewer's screenshot) and the identical JSON (16 of 17 responses byte-identical, the 17th identical after normalising `request_id`).
+- What the k6 numbers can and cannot say is in "Step 2 k6 measurement" above.
 
 ### Stage B status
-- Migrations added: none, by decision.
-- `step2-indexes` k6 run: not done yet. Per-route and overall `step2-indexes` lines above stay `-` until the reviewer pastes k6 output.
-- Write cost of indexes: scratch-table benchmark approved, to run after the k6 run and after `security:proof` and `orders:race-test`. Plan: copies `scratch_orders_v0` to `_v2` and `scratch_order_items_v0` to `_v2` (v0 primary key only, v1 plus one secondary index, v2 all existing indexes), timed load in 2000-row batches, non-indexed `UPDATE`, indexed `UPDATE`, `DELETE`, index sizes, 3 runs and the median, binlog ON. Raw output will go to `docs/r3-evidence/step2-write-cost-raw.txt`. Reference from the reviewer for the real seed (all existing indexes): customers 0.42 s, products 0.48 s, images 0.49 s, orders INSERT 13.56 s, order_items INSERT 35.04 s, total 52.75 s (stock sync excluded).
-- Summary table of the benchmark (as bullets): to be filled.
-- What does an index slow down? To be answered with the evidence above: every `INSERT`, `UPDATE` and `DELETE` must also update each index, indexes take disk space and buffer pool memory, and unused indexes cost writes without helping any read.
+- Migrations added: none, by decision. Indexes added or dropped: none. Zero indexes added in Step 2.
+- `step2-indexes` k6 run: done, 2 valid runs, numbers and comparison in "Step 2 k6 measurement". Not attributed to the deferred join (control run not done, by decision).
+- Regression checks: `php artisan test` 56 passed, `security:proof` 15 PASS, `orders:race-test` PASS, product 1 stock restored to 50 and verified.
+- Write-cost and read-side scratch benchmark: done and cleaned up, results above, raw output in `docs/r3-evidence/step2-write-cost-raw.txt`.
+- Open for the reviewer: committing the evidence files (see the commit list given with the final report).
 
 ## Step 3: Redis cache
 
