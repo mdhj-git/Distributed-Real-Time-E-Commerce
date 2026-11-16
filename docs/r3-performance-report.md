@@ -2,6 +2,8 @@
 
 Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 on reads, write-path per-item insert fixed (bulk insert). Step 2: analysis done, no new index is justified, no migration. One query rewrite (deferred join in `OrderService::paginate`) is implemented and checked (JSON identical). The `step2-indexes` k6 run is recorded (2 valid runs, lower than the baseline on every route, NOT attributed to the rewrite: the same-day control run was not done, by decision). The regression checks passed. The scratch-table write-cost and read-side benchmark is done and cleaned up. Zero indexes were added.
 
+Steps 3 to 5 (branch `feat/r3-step3-5-caching`): Step 3 (cache store) is skipped because the store is already Redis. The same-day control `step3-pre` is recorded (2 valid runs). Step 4 (catalog cache in Redis) is in progress and Step 5 (ETag) is not started. Numbers for them are filled only from the k6 output pasted by the reviewer.
+
 Rules for this file:
 - Every performance number (p50, p95, p99, requests per second, data volume) comes only from k6 output pasted by the reviewer, or from the JSON files in `perf/results/`. Nothing is estimated.
 - Screenshots in `docs/r3-evidence/` are supporting evidence only.
@@ -38,40 +40,45 @@ Product list (`products_list`)
 - baseline (run 1 / run 2): p50 685.84 / 673.28 ms; p95 810.14 / 793.43 ms; p99 862.84 / 854.21 ms; requests 497 / 503; body bytes 6829055 / 6894948
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 668.40 / 670.47 ms; p95 771.59 / 763.45 ms; p99 807.28 / 802.71 ms; requests 524 / 521; body bytes 7169504 / 7107567. Mean and change against the baseline: see "Step 2 k6 measurement" below.
-- step3 (Redis cache): reserved
-- step4: reserved
-- step5 (ETag): reserved
+- step3-pre (same-day control, run 1 / run 2): p50 678.47 / 670.29 ms; p95 834.34 / 779.06 ms; p99 908.05 / 818.03 ms; requests 500 / 517; body bytes 6877153 / 7082417. X-Cache: absent 500 / 517 (no cache exists yet).
+- step4-redis: reserved
+- step5-etag: reserved
 - step6 (Read Replica): reserved
 
 Product detail (`product_detail`)
 - baseline (run 1 / run 2): p50 674.22 / 654.11 ms; p95 786.79 / 771.84 ms; p99 822.73 / 848.75 ms; requests 374 / 377; body bytes 156751 / 157590
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 646.82 / 645.45 ms; p95 737.75 / 738.55 ms; p99 780.01 / 774.52 ms; requests 388 / 389; body bytes 162568 / 162957. Mean and change against the baseline: see "Step 2 k6 measurement" below.
-- steps 3 to 6: reserved
+- step3-pre (same-day control, run 1 / run 2): p50 664.41 / 651.83 ms; p95 800.29 / 750.92 ms; p99 863.00 / 801.45 ms; requests 377 / 386; body bytes 157872 / 161888. X-Cache: absent 377 / 386.
+- step4-redis, step5-etag, step6 (Read Replica): reserved
 
 Customer order list (`orders_customer_list`)
 - baseline (run 1 / run 2): p50 662.31 / 654.20 ms; p95 779.76 / 778.31 ms; p99 825.85 / 838.71 ms; requests 338 / 347; body bytes 1898452 / 1948884
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 646.85 / 642.99 ms; p95 742.89 / 746.08 ms; p99 790.18 / 767.48 ms; requests 359 / 356; body bytes 2017822 / 2000418. Mean and change against the baseline: see "Step 2 k6 measurement" below.
-- steps 3 to 6: reserved
+- step3-pre (same-day control, run 1 / run 2): p50 664.02 / 650.62 ms; p95 791.82 / 752.19 ms; p99 827.65 / 798.14 ms; requests 343 / 356; body bytes 1925927 / 2000149. X-Cache: absent 343 / 356.
+- step4-redis, step5-etag, step6 (Read Replica): reserved
 
 Customer order detail (`order_detail`)
 - baseline (run 1 / run 2): p50 660.45 / 646.76 ms; p95 776.58 / 774.86 ms; p99 820.78 / 827.65 ms; requests 272 / 276; body bytes 107536 / 109079
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 635.29 / 635.81 ms; p95 726.50 / 726.33 ms; p99 756.23 / 752.62 ms; requests 281 / 279; body bytes 111074 / 110289. Mean and change against the baseline: see "Step 2 k6 measurement" below.
-- steps 3 to 6: reserved
+- step3-pre (same-day control, run 1 / run 2): p50 653.31 / 643.86 ms; p95 807.37 / 739.36 ms; p99 859.62 / 772.76 ms; requests 276 / 278; body bytes 109079 / 109856. X-Cache: absent 276 / 278.
+- step4-redis, step5-etag, step6 (Read Replica): reserved
 
 Admin order list (`orders_admin_list`)
 - baseline (run 1 / run 2): p50 773.45 / 767.29 ms; p95 988.22 / 955.48 ms; p99 1041.77 / 998.20 ms; requests 266 / 269; body bytes 2048246 / 2071963
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2): p50 716.45 / 733.32 ms; p95 832.03 / 844.55 ms; p99 866.30 / 880.26 ms; requests 280 / 277; body bytes 2155456 / 2132503. Mean and change against the baseline: see "Step 2 k6 measurement" below.
-- steps 3 to 6: reserved
+- step3-pre (same-day control, run 1 / run 2): p50 753.17 / 726.12 ms; p95 918.92 / 826.37 ms; p99 1006.43 / 872.24 ms; requests 268 / 276; body bytes 2014582 / 2075454. X-Cache: absent 268 / 276.
+- step4-redis, step5-etag, step6 (Read Replica): reserved
 
 Overall (tag `phase:main`): p50, p95, p99, requests per second, response body bytes (`data_received` sub-metric is n/a in k6)
 - baseline (run 1 / run 2 / mean): p50 682.58 / 671.84 / 677.21 ms; p95 858.56 / 860.94 / 859.75 ms; p99 982.35 / 941.09 / 961.72 ms; requests 1747 / 1772; req/s 29.12 / 29.53 / 29.33; body bytes 11040040 / 11182464
 - step1-n-plus-1: unchanged (no code change on the read paths; the fix is on the write path, which the k6 scenario does not send)
 - step2-indexes (run 1 / run 2 / mean): p50 659.57 / 661.29 / 660.43 ms; p95 773.41 / 780.96 / 777.19 ms; p99 828.60 / 841.48 / 835.04 ms; requests 1832 / 1822; req/s 30.53 / 30.37 / 30.45; body bytes 11616424 / 11513734. Mean and change against the baseline: see "Step 2 k6 measurement" below.
-- steps 3 to 6: reserved
+- step3-pre (same-day control, run 1 / run 2 / mean): p50 676.09 / 666.06 / 671.07 ms; p95 834.32 / 785.31 / 809.81 ms; p99 921.92 / 821.91 / 871.91 ms; requests 1764 / 1813; req/s 29.40 / 30.22 / 29.81; body bytes 11084613 / 11429764. X-Cache: absent 1764 / 1813. Details in "Step 3" below.
+- step4-redis, step5-etag, step6 (Read Replica): reserved
 
 ## Baseline
 
@@ -525,13 +532,126 @@ What does an index slow down, and what does it speed up? (answer from the eviden
 - Write-cost and read-side scratch benchmark: done and cleaned up, results above, raw output in `docs/r3-evidence/step2-write-cost-raw.txt`.
 - Open for the reviewer: committing the evidence files (see the commit list given with the final report).
 
-## Step 3: Redis cache
+## Step 3: cache store (skipped) and the same-day control `step3-pre`
 
-Reserved. Filled by a later request.
+Outcome: Step 3 (move the cache store to Redis) is skipped, because the store is already Redis. The label `step3-pre` is a same-day control measurement of the unchanged application, and it is the "before" for Step 4.
 
-## Step 4: reserved
+Why Step 3 is skipped (read from the loaded configuration inside the `app` container, 2026-11-16)
+- `cache.default` = `redis`. Store class `Illuminate\Cache\RedisStore`, store connection `cache`, Redis database 1 (`REDIS_CACHE_DB`), the default connection uses database 0. Client `phpredis`, host `redis`. The app reaches Redis (ping answers).
+- The rate limiter and the JWT blacklist use the same store:
+  - `RateLimiter` is built by `CacheServiceProvider` with `cache.limiter`, which is not set, so it uses the default store (Redis database 1). `throttleApi()` is used without the Redis throttle variant.
+  - The JWT blacklist is `PHPOpenSourceSaver\JWTAuth\Providers\Storage\Illuminate`, built on the default cache repository.
+- So moving the store would change nothing: there is no "before" and "after" for it. Side effects that a move would have had (tokens revoked in an old store becoming valid again, every member editing `.env`) do not apply.
+- Related facts checked at the same time (documentation only, nothing changed): `config:cache` and `route:cache` are not active; nginx has no active `gzip` directive; PHP-FPM `pm.max_children` is 5; OPcache is enabled with `opcache.jit=tracing` but `opcache.jit_buffer_size=0`, so the JIT is not active (earlier notes said "may not be active", now verified); the Redis service is `redis:7-alpine` without a config file and with an anonymous volume at `/data` (image default), so cached values survive `docker compose restart redis` and any reseed.
 
-Reserved. Filled by a later request.
+### `step3-pre` measurement
+
+Source of every number: the raw k6 output pasted by the reviewer and `perf/results/step3-pre-1.json` and `step3-pre-2.json` (all means and percentages below were computed from those files by script). Nothing is estimated.
+
+What was measured
+- Code under test: `main` as merged (PR #15, `13758be`) plus the commit `3278396` that changed only the k6 scripts (`perf/k6/lib.js`, `perf/k6/etag.js`). `git diff --stat 97b0bdd HEAD` over `app`, `Modules`, `config`, `bootstrap`, `routes`, `database`, `docker`, `docker-compose.yml`, `composer.json` and `composer.lock` is empty: the production code is the one measured by `step2-indexes`.
+- Procedure: the standard one (`warmup.js`, 60 s pause, run 1, 60 s pause, run 2). No replay, because no cache exists yet. Warm-up: 583 iterations.
+- Same scenario as before: 20 VUs, constant, 60 s, no think time. `API_RATE_LIMIT_PER_MINUTE` was 100000 during the runs and 60 afterwards (verified with `config:show ratelimit`). `PERF_QUERY_LOG=false` before and after (verified). The slow query log stayed off.
+- Dataset: users 2003, products 5002, orders 300002 (the two extra orders come from the Step 2 regression checks), order_items 750605, product_images 7569, categories 3. Stock of products 1 and 2 was 50 and 100 (API and `inventory-db`). `customers.json` unchanged.
+- Timeline (local time, UTC+3): start 17:51:57, run 1 finished 17:55:14 (+199 s), run 2 finished 17:58:17 (about +382 s). Per k6 invocation about 82 to 84 s including `setup()`.
+- Validity: both runs `RUN VALID` yes, 0 responses with 429, 0 with 5xx, 0 with `stock:null`, failed rate 0 percent. p95 of the two runs differs by 49.01 ms (6.05 percent of their mean), under the 10 percent limit, so no third run was needed.
+- X-Cache counters (new in this step): every counted response was `absent` (1764 in run 1, 1813 in run 2), as expected before the cache exists.
+- Token check: the two JSON files contain `"token": "<redacted>"` in `setup_data` and no `eyJ` string. This also shows that k6 2.3.0 passes `setup_data` to `handleSummary`, so the redaction was needed and works in a real run.
+- Evidence files: `perf/results/step3-pre-1.json`, `perf/results/step3-pre-2.json`, `perf/results/step3-pre-docker-stats.txt` (written by `Tee-Object` as UTF-16; the reviewer converted it to UTF-8 without BOM after the run, content unchanged; I re-read it after the conversion: 434 lines, the same window samples and means as in this section). Screenshots (supporting only, saved by the reviewer): `docs/r3-evidence/step3-pre-run1.png`, `docs/r3-evidence/step3-pre-run2.png`. The stats loop was started during the warm-up (17:52:20), so only the samples inside the two run windows belong to the measurement.
+
+Results (run 1 / run 2 / mean), values in ms unless stated; req/s = requests / 60
+- ALL: p50 676.09 / 666.06 / 671.07; p95 834.32 / 785.31 / 809.81; p99 921.92 / 821.91 / 871.91; requests 1764 / 1813; req/s 29.40 / 30.22 / 29.81; body bytes 11084613 / 11429764.
+- `products_list`: p50 678.47 / 670.29 / 674.38; p95 834.34 / 779.06 / 806.70; p99 908.05 / 818.03 / 863.04; requests 500 / 517; body bytes 6877153 / 7082417.
+- `product_detail`: p50 664.41 / 651.83 / 658.12; p95 800.29 / 750.92 / 775.60; p99 863.00 / 801.45 / 832.22; requests 377 / 386; body bytes 157872 / 161888.
+- `orders_customer_list`: p50 664.02 / 650.62 / 657.32; p95 791.82 / 752.19 / 772.00; p99 827.65 / 798.14 / 812.90; requests 343 / 356; body bytes 1925927 / 2000149.
+- `order_detail`: p50 653.31 / 643.86 / 648.58; p95 807.37 / 739.36 / 773.37; p99 859.62 / 772.76 / 816.19; requests 276 / 278; body bytes 109079 / 109856.
+- `orders_admin_list`: p50 753.17 / 726.12 / 739.65; p95 918.92 / 826.37 / 872.64; p99 1006.43 / 872.24 / 939.33; requests 268 / 276; body bytes 2014582 / 2075454.
+
+MySQL status counters (cumulative; read after the warm-up and after run 2, so the difference covers runs 1 and 2 with their `setup()` requests)
+- Before: `Com_select` 2965, `Com_stmt_close` 2545, `Com_stmt_execute` 2545, `Com_stmt_prepare` 3070, `Connections` 3575, `Questions` 14574.
+- After: `Com_select` 17502, `Com_stmt_close` 17080, `Com_stmt_execute` 17080, `Com_stmt_prepare` 20504, `Connections` 7408, `Questions` 40514.
+- Difference: `Com_select` +14537, `Com_stmt_execute` +14535, `Com_stmt_close` +14535, `Com_stmt_prepare` +17434, `Connections` +3833, `Questions` +25940.
+- Statement counts by event name (table cleared before run 1): Execute 14535, Prepare 14531, Close stmt 14531, Quit 3831, set_option 3783, change_db 3782, Ping 48, select 2, error 2, truncate 1, show_status 1. As in Step 2, the `Com_stmt_prepare` status counter rose by more than the Prepare events in this table (17434 against 14531). Not investigated.
+- These counters are the "before" for the database work that the Step 4 cache should remove (statements sent per run). They do not show which SQL was slow.
+
+docker stats for the two run windows (CPU in percent, 100 percent = one core; memory in MiB). Window: 62 s to 2 s before the time the summary file was written (17:55:14 and 17:58:17), as in the Step 2 report. 8 samples for run 1 and 9 for run 2, about 7 s apart, so the numbers are coarse.
+- Run 1, mean / peak CPU: `app` 127.68 / 137.65, `mysql` 50.48 / 75.87, `nginx` 1.62 / 1.77, `redis` 3.25 / 6.53, `inventory` 3.22 / 5.91, `inventory-db` 2.61 / 7.81, `k6` 4.80 / 6.54. Memory means: `app` 167.3, `mysql` 692.5, `redis` 14.1, `inventory` 36.1, `inventory-db` 501.5, `nginx` 9.8, `k6` 29.5.
+- Run 2, mean / peak CPU: `app` 120.40 / 130.01, `mysql` 33.24 / 52.45, `nginx` 1.56 / 1.87, `redis` 3.13 / 6.99, `inventory` 3.31 / 9.39, `inventory-db` 0.89 / 1.13, `k6` 4.96 / 6.60. Memory means: `app` 167.1, `mysql` 692.7, `redis` 14.1, `inventory` 39.2, `inventory-db` 501.6, `nginx` 9.8, `k6` 27.9.
+
+Reading (careful, two runs only)
+- The application code did not change between `step2-indexes` and `step3-pre`, yet the overall numbers differ: p50 660.43 to 671.07 ms (+1.6 percent), p95 777.19 to 809.81 ms (+4.2 percent), p99 835.04 to 871.91 ms (+4.4 percent), req/s 30.45 to 29.81 (-2.1 percent). This is between-session variation of the machine (another day and session), not a code effect. A Step 4 change of that size or smaller cannot be told apart from session noise, and the three order routes (not cached) are the in-run control for that.
+- Within this session the two runs differ more than the two runs of `step2-indexes` did (p95 49.01 ms apart against 7.56 ms), mostly on `orders_admin_list` (p95 918.92 against 826.37) and `order_detail` (807.37 against 739.36). The 10 percent rule was not triggered.
+- This is a control for the current code only. There is still no same-day run of the code before the deferred join, so the `step2-indexes` improvement over the baseline stays unattributed, as recorded in "Attribution of the k6 improvement" above.
+
+## Step 4: catalog cache in Redis
+
+Status: implemented and checked (see "Checks done before the measurement"). The `step4-redis` measurement is not done yet. Its numbers are filled only from the k6 output pasted by the reviewer.
+
+What is cached, and what is not
+- Cached, as plain arrays only (never models, closures or paginators): product list pages, product details and `GET /categories`. No API route writes categories (they come from the seeder), so that list has the longest TTL.
+- Not cached:
+  - Stock quantities. Their source is the inventory service and they change with every order. Every list or detail request makes one `GetStock` call (for the whole page), whether the product data came from the cache or from the database, and writes the quantity into the `stock` slot of the cached array. This call is the main per-request cost that remains on a cache HIT. It is not measured separately in this work, so no number is given. Caching quantities for a short time was raised as a question and the decision is to keep stock live.
+  - Anything user specific (orders, user data, tokens).
+  - Errors and every non-200 response, including 404: the fill leaves through an exception before anything is stored.
+  - `ProductCatalogService::findForOrder()`, the price snapshot used when an order is created. It reads the database directly and stays uncached.
+- Nothing request dependent is stored. Checked on stored values: `stock` is stored as `null`, there is no object, no `request_id`, no host. Image URLs come from `APP_URL` through the disk URL (`config/filesystems.php`), not from the request: a fill made with `Host: other.test` gave a body without `other.test`, identical to the next read. If `APP_URL` is ever changed, the cache must be flushed.
+
+Where the cache sits (all inside `Modules/Products`)
+- `Services/CatalogCache.php`: key names, version counters, invalidation, TTLs from config. The only code that knows the keys. Uses the `Cache` facade only (no `Redis::`, no `Cache::tags()`).
+- `Services/CachedProductReader.php`: `list()`, `detail()`, `categories()`. Used only by `ProductController::index`, `ProductController::show` and `CategoryController::index`.
+- `Console/CacheFlushCommand.php`: `products:cache-flush`.
+- `ProductService` keeps its public signatures and stays uncached. Its write methods call `find()` inside transactions to build their responses, so a cached `find()` could fill the cache with uncommitted data or give the admin a stale value. The reader calls `ProductService::paginate()` and `find()` on a MISS, so the query logic exists once, and the live stock comes with them: a MISS makes no extra `GetStock` call.
+- The controllers build the response with the unchanged `ApiResponse` helper (a `LengthAwarePaginator` of arrays for lists, so the `meta` block comes from the same shared code) and add the header `X-Cache: HIT` or `MISS`. The JSON body is byte-identical to the previous one.
+
+Keys, versions and TTLs
+- Prefix and code version: `products:v1:`. A change of the cached array shape bumps `v1` in `CatalogCache::KEY_VERSION`.
+- Counters (created by `Cache::increment`, no TTL): `products:v1:ns` (bumped only by the flush command), `products:v1:list-ver` (bumped on every catalog write), `products:v1:product-ver:{id}` (bumped when that product is written). A missing counter reads as 0.
+- Entries: list `products:v1:l:{ns}:{list-ver}:{sha1 of [category_id, search, page, per_page]}`, detail `products:v1:d:{ns}:{id}:{product-ver}`, categories `products:v1:c:{ns}`. The list parameters are normalised (defaults applied: page 1, per_page 15; an empty search is the same as no search; fixed order; hashed because `search` can be 255 characters). `/products`, `/products?page=1&per_page=15` and `?search=` share one key (checked: the second and third requests were HITs). The response is the same for admin and customer, so no role is in the key.
+- TTLs (config `products.cache.*`, env `PRODUCTS_CACHE_LIST_TTL`, `PRODUCTS_CACHE_DETAIL_TTL`, `PRODUCTS_CACHE_CATEGORIES_TTL`, block `# r3: caching` in `.env.example`): lists 600 s, details 1800 s, categories 3600 s. They are read in the config file only. Because versions do the invalidation, the TTL is a safety net (it bounds staleness if an invalidation is missed, and memory) and not the freshness mechanism.
+- TTL against the measurement timeline (durations from the Step 2 and Step 3 runs: about 83 s per k6 invocation including `setup()`, plus 60 s pauses): from the flush to the end of run 2 is about 8 minutes (roughly 480 s). The oldest entries are written during the warm-up, about 25 s after the flush, so at the end of run 2 they are about 450 s old, under the 600 s list TTL. Expected expirations during run 1 and run 2: none. A third run would bring the oldest list entries to about 600 s near its end. The per-run HIT/MISS counts and the `Get-Date` stamps of the gate script show whether that happened (the elapsed time from the flush to the end of each measured run is reported, and above 570 s the report says that list keys written by the warm-up may have expired).
+- Scenario facts that shape the HIT ratio (not performance numbers): the list sequence has at most 98 distinct keys (18 unfiltered pages, plus 5 pages x 2 page sizes x (3 categories + 5 search terms) = 80 filtered). Product detail picks ids uniformly from 5000, so within one run most detail requests are first-time keys unless a replay has already filled them.
+
+Invalidation, and the race it prevents
+- Writes (inside the `ProductService` write methods, not in model events, because bulk inserts such as `perf:seed` fire no events): the database write commits, then `DB::afterCommit` bumps the versions. Outside a transaction the callback runs at once, inside one it runs after the outermost commit and is dropped on rollback (checked on the real MySQL connection). `create` bumps the list version; `update`, `delete` and `addImages` bump the list version and the product version. `adjustStock` bumps nothing, because it changes only the inventory service and stock is never cached.
+- Reads on a MISS: (1) read the version counters, (2) build the entry key from them and try it, (3) read the database on the primary, (4) store under the key built in step 2.
+- The race: a reader loads the old row, a writer commits and bumps the version, then the reader stores. The late store lands on the OLD version key, which nobody reads any more, and it expires by TTL. With "delete after write" the late store would have landed on the live key and stayed stale until its TTL.
+- Remaining window, by design: between the writer's commit and its version bump (milliseconds) a reader can still HIT the old entry. The admin who wrote reads after the bump, so read-your-writes holds for the writer.
+- A soft delete is caught first by the route model binding (404), and the version bump frees the dead entries.
+- If a counter key were lost while old entries survive (Redis has no `maxmemory` here, so no eviction), stale values could live until their TTL at most.
+- Writers that bypass `ProductService` (seeders, `perf:seed`, `migrate:fresh`, direct SQL) do not invalidate. After any of them run `products:cache-flush`.
+
+Cache fill from the primary database (needed for Step 6)
+- Verified in the installed Laravel 13.39.0 and on a temporary read/write-split connection created in memory (not written anywhere), recording for each query of one list page whether it used the read or the write PDO:
+  - plain `paginate`: read, read, read, read (count, page, category eager load, images eager load);
+  - `Builder::useWritePdo()` on the main query only: write, write, read, read. So it is NOT enough: the eager loads are separate builders;
+  - `Connection::usingWritePdo()` around the whole fill: write, write, write, write, and the next plain page is back to read, read, read, read.
+- Choice: every fill (list, detail, categories) runs inside `DB::connection()->usingWritePdo(...)` in `CachedProductReader::fromPrimary()`. It sets `readOnWriteConnection`, which `Connection::getReadPdo()` checks, and restores the previous value in a `finally`. No BEGIN/COMMIT round trips.
+- Not covered, noted for Step 6: the `exists:categories,id` validation of `category_id` and the route model binding of `show` still read through the normal read connection, and `ProductCatalogService::findForOrder()` would read from a replica unless it is routed to the primary then.
+
+`show` and the route model binding
+- Kept. The binding is one primary key query and it is also the source of the existing 404 body (missing or soft-deleted id, non-numeric id), so the route signature and all 404 behaviour stay as they were. The reader is called with the bound product's id. The cost is one query that remains on a HIT; its measured count is recorded at the query-count check.
+- The alternative (resolve the id inside the reader) needs `whereNumber`, an integer-typed parameter and a hand-made 404, and changes how ids such as `1e3` behave. Little to gain for a primary key lookup.
+
+Flush command and why not `cache:clear`
+- `php artisan products:cache-flush` bumps `ns` once. Every list, detail and categories entry stops being read, with no `Redis::`, no `FLUSHDB` and no pattern delete. Old entries expire by TTL.
+- `php artisan cache:clear` is not used: the cache store also holds the rate limiter counters and the JWT blacklist, and it would flush all of them.
+
+Cache stampede
+- Documented, not implemented. When a hot key expires, several requests can rebuild it at the same time. With `pm.max_children = 5` at most 5 workers can do so for one key. No lock was added, because nothing in the numbers shows a problem; if it ever does, that is a separate decision.
+
+Other notes
+- Empty list pages (past the last page, or a search with no match) are cached like any 200: cheap to store and bounded by the TTL. Many distinct `search` values or page numbers can grow the key space until the TTLs expire; Redis has no `maxmemory` here and it was not changed.
+- If Redis is down, the throttle middleware already fails first, so the catalog cache adds no new failure mode. Not handled.
+- The JWT library itself calls `tags('tymon.jwt')` on the cache. That is library code; the application code uses no tags.
+
+Checks done before the measurement (production code changed only from this point)
+- `php -l` on all changed files, `pint --test` on the 8 new and changed PHP files: pass. `php artisan test`: 56 passed (507 assertions), same as before (SQLite in memory, array cache).
+- Body comparison: 25 URLs captured before the change (code unchanged, `X-Cache` absent on all) and after it, twice (first pass MISS, second pass HIT): lists (defaults, pages 1, 2, 101, 102 and 300, both page sizes, `category_id`, `search`, both together, a search without match, an empty `search=`), `/categories`, details of products 1, 2, 3 (three images), 103 and 5002, and five error cases. 20 bodies are byte-identical in all three passes. The 5 error bodies (two 404, three 422) are identical once the per-request `request_id` is normalised. The other response headers are identical in all 25 cases (only `X-Cache` is new).
+- `GET /categories`, lists and details answered `MISS` on the first request of a key and `HIT` on the second. Errors carry no `X-Cache`.
+- Stored values inspected through the `Cache` facade: see "Nothing request dependent is stored" above.
+- The mechanism checks for the primary fill and for `DB::afterCommit` are described above.
+
+Procedure of `step4-redis`. The warm-up procedure of this label is: `warmup.js`, a 60 s pause, one discarded replay of `baseline.js` with `RUN=0` (no JSON file, no docker stats, no screenshot, not in any table or median), a 60 s pause, then the two runs. The reason: every VU draws the same pseudo-random sequence in every run (the generator is seeded only by the VU number), so without the replay run 2 would repeat run 1's keys on a warm cache while run 1 starts partly cold.
 
 ## Step 5: ETag
 

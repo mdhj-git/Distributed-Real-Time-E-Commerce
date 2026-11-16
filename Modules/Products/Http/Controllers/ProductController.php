@@ -14,6 +14,7 @@ use Modules\Products\Http\Requests\UploadProductImagesRequest;
 use Modules\Products\Http\Resources\ProductImageResource;
 use Modules\Products\Http\Resources\ProductResource;
 use Modules\Products\Models\Product;
+use Modules\Products\Services\CachedProductReader;
 use Modules\Products\Services\ProductService;
 use Modules\Shared\Helpers\ApiResponse;
 
@@ -22,22 +23,24 @@ class ProductController extends Controller
     use AuthorizesRequests;
 
     public function __construct(
-        private ProductService $products
+        private ProductService $products,
+        private CachedProductReader $reader,
     ) {}
 
-    // GET /api/v1/products
+    // GET /api/v1/products  (cached read, see CachedProductReader)
     public function index(ListProductsRequest $request): JsonResponse
     {
-        return ApiResponse::paginated(
-            $this->products->paginate($request->validated()),
-            ProductResource::class,
-        );
+        $read = $this->reader->list($request->validated());
+
+        return ApiResponse::paginated($read['value'])->header('X-Cache', $read['hit'] ? 'HIT' : 'MISS');
     }
 
-    // GET /api/v1/products/{product}
+    // GET /api/v1/products/{product}  (cached read; the route binding still decides the 404)
     public function show(Product $product): JsonResponse
     {
-        return ApiResponse::ok(new ProductResource($this->products->find($product->id)));
+        $read = $this->reader->detail($product->id);
+
+        return ApiResponse::ok($read['value'])->header('X-Cache', $read['hit'] ? 'HIT' : 'MISS');
     }
 
     // POST /api/v1/products  (multipart: images are uploaded here, never on PATCH)
