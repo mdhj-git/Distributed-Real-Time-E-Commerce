@@ -28,6 +28,12 @@ services:
 
   mysql:
     image: mysql:8.4
+    # r3: replica. GTIDs are needed for replication with auto-positioning. The binary log keeps 2 days
+    # (a replica that stays stopped longer than that needs setup-replica.sh --reseed).
+    command:
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --binlog-expire-logs-seconds=172800
     environment:
       MYSQL_DATABASE: ${DB_DATABASE}
       MYSQL_USER: ${DB_USERNAME}
@@ -35,6 +41,39 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\""]
+      interval: 10s
+      retries: 10
+      start_period: 30s
+
+  # r3: replica
+  # Read replica of "mysql". Does not start with "docker compose up -d" (profile "replica"), and every
+  # compose command that targets it needs --profile replica (up, stop, start, restart, exec, logs).
+  # Do NOT add read_only or super_read_only here: the image's first-boot init runs a temporary server
+  # with these arguments and needs a writable server. docker/mysql-replica/setup-replica.sh sets both
+  # with SET PERSIST after the data import.
+  # Setup:  docker compose --profile replica exec mysql-replica bash /scripts/setup-replica.sh
+  # Health: docker compose --profile replica exec -T mysql-replica bash /scripts/check-replica.sh
+  mysql-replica:
+    image: mysql:8.4
+    profiles: ["replica"]
+    command:
+      - --server-id=2
+      - --gtid-mode=ON
+      - --enforce-gtid-consistency=ON
+      - --relay-log=mysql-replica-relay-bin
+      - --skip-log-bin
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      REPLICATION_USER: ${DB_REPLICATION_USER:-replicator}
+      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:-replica_dev}
+    volumes:
+      - mysql_replica_data:/var/lib/mysql
+      - ./docker/mysql-replica:/scripts:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
@@ -107,4 +146,5 @@ services:
 
 volumes:
   mysql_data:
+  mysql_replica_data:
   inventory_db_data:
