@@ -7,11 +7,18 @@ use Modules\Products\Http\Middleware\ConditionalEtag;
 
 // The api/v1 prefix and the api middleware group are applied in Providers/RouteServiceProvider.php.
 
-Route::get('categories', [CategoryController::class, 'index'])->name('categories.index');
+// "reads.primary" (a pass-through alias, see App\Http\Middleware\ReadsOnPrimary): the three catalog reads use the
+// primary database while CATALOG_READS_ON_PRIMARY is true, so a product that was just created or deleted is never
+// a 404 or a ghost during the replica lag. The Redis cache is unchanged.
+Route::get('categories', [CategoryController::class, 'index'])
+    ->middleware('reads.primary')
+    ->name('categories.index');
 
-Route::get('products', [ProductController::class, 'index'])->name('products.index');
+Route::get('products', [ProductController::class, 'index'])
+    ->middleware('reads.primary')
+    ->name('products.index');
 Route::get('products/{product}', [ProductController::class, 'show'])
-    ->middleware(ConditionalEtag::class)
+    ->middleware([ConditionalEtag::class, 'reads.primary'])
     ->name('products.show');
 
 Route::middleware(['auth:api', 'can:admin'])->group(function () {
