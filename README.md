@@ -231,3 +231,8 @@ docker compose exec app php artisan migrate
 ## سيناريو عرض المتطلب الثاني
 
 راجع [docs/r2-demo-scenario.md](docs/r2-demo-scenario.md) لخطوات العرض الكاملة أمام الأستاذ.
+
+
+## الطوابير والـ Worker (المتطلب الرابع)
+
+راجع [docs/r4-queues-and-worker.md](docs/r4-queues-and-worker.md) لشرح إرسال البريد عبر RabbitMQ، وسياسة إعادة المحاولة، والطابور الميت، وطريقة العرض.
