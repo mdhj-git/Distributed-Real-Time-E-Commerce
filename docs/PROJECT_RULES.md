@@ -229,4 +229,11 @@ UPDATE stock SET quantity = quantity + ? WHERE product_id = ? AND quantity + ? >
 - لا تعتمد على الحارس الافتراضي. اكتب `auth:api` في المسار و`auth('api')` في الكود. السبب: `defaults.guard` يقرأ `AUTH_GUARD` من البيئة.
 - لا تستورد `Modules\Users\Models\User` خارج الوحدة (القسم 1). استخدم البوابتين و`UserRole` من `Contracts` فقط.
 - الـ Seeder يضبط `role` داخل `updateOrCreate` رغم أنه خارج `$fillable`. وهذا يعمل عبر `db:seed` فقط، لأن الأمر يشغّل الـ Seeder داخل `Model::unguarded`. أي تشغيل آخر يتجاهل `role` بصمت فيبقى الحساب `customer`.
+
+## 12. نسخة القراءة (Read Replica)
+
+### حدود معروفة
+
+- تغيير يجريه مستخدم آخر لا يصل إلى مستخدم إلا بعد تأخر النسخة (replica lag). تغييرات المستخدم نفسه محمية بعلامة read-your-writes مدة `READ_YOUR_WRITES_TTL_SECONDS` (30 ثانية افتراضياً). مثال: عميل أو مسؤول يقرأ طلباً أنشأه غيره قبل لحظات قد يحصل على 404 حتى تلحق النسخة (هذا سبب فشل الحالتين 6 و9 في `security:proof` عند تأخير 5 ثوانٍ).
+- النسخة للقراءة فقط (`read_only` و`super_read_only`)، فكل كتابة عليها ترفضها. وأوامر الـ console والمهاجرات (ومنها `migrate` عند إقلاع الحاوية) تقرأ دائماً من القاعدة الأساسية ولا تعتمد على النسخة.
 - لتشغيل Seeder الـ Users وحده: `docker compose exec app php artisan db:seed --class='Modules\Users\Database\Seeders\UsersDatabaseSeeder'`.

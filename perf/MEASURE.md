@@ -458,3 +458,91 @@ EXPLAIN on a rebuilt query (read-only, runs inside the container, the password i
 ```powershell
 "EXPLAIN ANALYZE select * from orders order by id desc limit 20 offset 299980;" | docker compose exec -T mysql sh -c 'MYSQL_PWD=$MYSQL_ROOT_PASSWORD mysql -uroot ecommerce -B -N -r'
 ```
+
+## 13. Step 6: one run before and one run after the read replica (for the screenshots)
+
+Exactly one `baseline.js` run per label, in one sitting: `replica-off` (`DB_READ_HOST=mysql`, the same as `DB_HOST`, so one plain connection as on `main`) and `replica-on` (`DB_READ_HOST=mysql-replica`).
+
+- This is an exception to the two-run rule of sections 5 and 10: one run per label, no repeat, no ABBA, no MySQL counters, no docker stats loop, no freshness command. The report says so. The pair is an indication, not a controlled result.
+- The `mysql-replica` container runs in BOTH labels, so the machine is in the same state. Only `DB_READ_HOST` changes.
+- Helpers used and NOT repeated here: `Invoke-MySql` (section 0), `Set-ApiLimit` (section 1), `Set-EnvValue` (section 12). Define them first. Section 13.2 adds one small helper.
+- Files to expect: `perf/results/replica-off-1.json` and `perf/results/replica-on-1.json`. Screenshots (the k6 summary with `RUN VALID` visible): `docs/r3-evidence/replica-off-run1.png` and `docs/r3-evidence/replica-on-run1.png`.
+- `setup()` took about 77 to 79 s in this sitting, longer than the default 60 s limit, so `-e K6_SETUP_TIMEOUT=240s` is required on every k6 line. `-T` (no pseudo-TTY) is on every `docker compose run` and `exec` line, as it was run.
+- Quiet machine and all other rules of the "Rules" section apply. Any `429`, `5xx` or `stock:null` makes the run INVALID: fix the cause and repeat that label.
+
+### 13.1 Bring the replica up and check it (before the sitting)
+
+```powershell
+Remove-Item Env:COMPOSE_PROFILES -ErrorAction SilentlyContinue
+docker compose --profile replica up -d
+$n = 0
+do { Start-Sleep -Seconds 5; $n++; $h = docker inspect --format '{{.State.Health.Status}}' (docker compose --profile replica ps -q mysql-replica) } until ($h -eq 'healthy' -or $n -ge 60)
+"mysql-replica: $h"
+docker compose --profile replica exec -T mysql-replica bash /scripts/check-replica.sh; "exit code: $LASTEXITCODE"
+```
+
+- Expected: `mysql-replica: healthy` and `exit code: 0`. Otherwise stop and read the printed error first. If `Last_IO_Error` mentions purged binary logs, the replica was stopped too long and needs `setup-replica.sh --reseed` with `app` stopped (see the README).
+- A plain `docker compose up -d` does not start the replica (compose profile). Always use `--profile replica`.
+
+### 13.2 Settings for the sitting (once) and the helper
+
+```powershell
+Set-ApiLimit 100000
+Set-EnvValue PERF_QUERY_LOG false
+Set-EnvValue READ_YOUR_WRITES_ENABLED true
+Set-EnvValue CATALOG_READS_ON_PRIMARY true
+docker compose exec -T app php artisan config:show ratelimit
+function Show-Effective {
+  docker compose exec -T app php artisan tinker --execute="var_export(['db_host'=>config('database.connections.mysql.host'),'read_host'=>config('database.connections.mysql.read.host'),'read_your_writes'=>config('replica.read_your_writes.enabled'),'catalog_on_primary'=>config('replica.catalog_reads_on_primary'),'api_limit'=>config('ratelimit.api_per_minute'),'perf_query_log'=>env('PERF_QUERY_LOG')]);"
+  ''
+}
+```
+
+- Expected: `api_per_minute ... 100000`.
+- `Show-Effective` prints the values the application really uses (outer double quotes and inner single quotes: Windows PowerShell 5.1 loses double quotes inside the argument).
+
+### 13.3 Label `replica-off`
+
+```powershell
+Set-EnvValue DB_READ_HOST mysql
+Show-Effective
+docker compose exec -T app php artisan products:cache-flush
+docker compose --profile perf run --rm -T -e K6_SETUP_TIMEOUT=240s -e LABEL=warmup -e RUN=0 k6 run /perf/k6/warmup.js
+Start-Sleep -Seconds 60
+docker compose --profile perf run --rm -T -e K6_SETUP_TIMEOUT=240s -e LABEL=replica-off -e RUN=1 k6 run /perf/k6/baseline.js
+```
+
+- `Show-Effective` must show `'read_host' => NULL` (a host equal to `DB_HOST` gives the plain single connection), `'api_limit' => 100000` and `'perf_query_log' => false`.
+- The cache flush and the warm-up give both labels the same cache state. Check the k6 summary: `RUN VALID` yes, `failed rate` 0, no 429, 5xx or `stock:null`.
+- Screenshot: `docs/r3-evidence/replica-off-run1.png`. File: `perf/results/replica-off-1.json`.
+
+### 13.4 Label `replica-on`
+
+```powershell
+Start-Sleep -Seconds 60
+Set-EnvValue DB_READ_HOST mysql-replica
+Show-Effective
+docker compose --profile replica exec -T mysql-replica bash /scripts/check-replica.sh; "exit code: $LASTEXITCODE"
+docker compose exec -T app php artisan products:cache-flush
+docker compose --profile perf run --rm -T -e K6_SETUP_TIMEOUT=240s -e LABEL=warmup -e RUN=0 k6 run /perf/k6/warmup.js
+Start-Sleep -Seconds 60
+docker compose --profile perf run --rm -T -e K6_SETUP_TIMEOUT=240s -e LABEL=replica-on -e RUN=1 k6 run /perf/k6/baseline.js
+```
+
+- `Show-Effective` must show `'read_host' => 'mysql-replica'`, `'api_limit' => 100000` and `'perf_query_log' => false`. `check-replica.sh` must exit 0 before the run.
+- The same validity checks as for `replica-off`.
+- Screenshot: `docs/r3-evidence/replica-on-run1.png`. File: `perf/results/replica-on-1.json`.
+
+### 13.5 Put the settings back
+
+```powershell
+Set-EnvValue DB_READ_HOST ''
+Set-ApiLimit 60
+Set-EnvValue PERF_QUERY_LOG false
+Show-Effective
+docker compose exec -T app php artisan config:show ratelimit
+```
+
+- Expected: `'read_host' => NULL`, `'api_limit' => 60`, `'perf_query_log' => false`, and `api_per_minute ... 60`. Do not leave the limit raised.
+- Optional, to stop the replica again (nothing is lost, the data stays in `mysql_replica_data`): `docker compose --profile replica stop mysql-replica`. Left stopped for more than 2 days (the binary log retention of the primary) it needs `setup-replica.sh --reseed` with `app` stopped.
+- The two results are recorded in the `replica-off` and `replica-on` rows of "Final summary (Requirement 3)" and in the Step 6 section of `docs/r3-performance-report.md`.

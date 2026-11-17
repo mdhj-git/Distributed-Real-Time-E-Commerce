@@ -3,6 +3,16 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+// r3: replica. Reads use a second server only when DB_READ_HOST is filled and differs from DB_HOST.
+// Empty or equal means the plain single-host connection, exactly as before.
+$primaryHost = env('DB_HOST', '127.0.0.1');
+$readHost = env('DB_READ_HOST');
+$splitReads = filled($readHost) && $readHost !== $primaryHost;
+
+$mysqlOptions = extension_loaded('pdo_mysql') ? array_filter([
+    Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+]) : [];
+
 return [
 
     /*
@@ -47,7 +57,7 @@ return [
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => $primaryHost,
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -59,10 +69,19 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
-                Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-            ]) : [],
-        ],
+            'options' => $mysqlOptions,
+        ] + ($splitReads ? [
+            // One read host (a string, never a list: a list is shuffled and silently falls back to the next host).
+            // "sticky" only covers one request. Read-your-writes across requests is ReadRouting's job.
+            // The merge of "read" over the connection is shallow, so "options" is repeated here with a connect timeout.
+            // Console processes (migrate, seeders, artisan commands) read from the primary: see AppServiceProvider.
+            'write' => ['host' => $primaryHost],
+            'read' => [
+                'host' => $readHost,
+                'options' => $mysqlOptions + [PDO::ATTR_TIMEOUT => (int) env('DB_READ_CONNECT_TIMEOUT', 2)],
+            ],
+            'sticky' => true,
+        ] : []),
 
         'mariadb' => [
             'driver' => 'mariadb',
