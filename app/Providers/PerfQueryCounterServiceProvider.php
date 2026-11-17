@@ -18,6 +18,15 @@ use Illuminate\Support\ServiceProvider;
  * Output: storage/logs/perf-queries.jsonl, one JSON line per query, one per lazy-loading violation
  * (logged only, never thrown) and one summary line per request. Binding values are logged in `values`
  * (strings cut to 100 chars), except for /auth/* requests where only the count is kept.
+ *
+ * Step 6 (read replica). `rw` is the connection TYPE the query used, not the kind of statement:
+ *  - read  = the read connection (the replica when DB_READ_HOST is set; with a single host a plain read also says "read").
+ *  - write = the primary connection. Laravel returns the write PDO BEFORE it marks the type "read" when a transaction
+ *            is open, when useWriteConnectionWhenReading() was called (ReadRouting, console, usingWritePdo) or when
+ *            "sticky" applies. So a SELECT forced to the primary is logged as "write".
+ * `verb` is the first SQL keyword (lower case) and tells a SELECT from a real write. On the `request` line,
+ * `modified` is the connection's hasModifiedRecords() after the request. A GET is clean when every verb is "select"
+ * and `modified` is false. With a single host the status counters of the server, not `rw`, show where a query ran.
  */
 class PerfQueryCounterServiceProvider extends ServiceProvider
 {
@@ -39,6 +48,8 @@ class PerfQueryCounterServiceProvider extends ServiceProvider
                 'bindings' => count($query->bindings),
                 'ms' => round($query->time, 3),
                 'connection' => $query->connectionName,
+                'rw' => $query->readWriteType,
+                'verb' => preg_match('/^\s*\(?\s*([a-z]+)/i', $query->sql, $m) === 1 ? strtolower($m[1]) : '?',
             ];
 
             // Binding values are needed to rebuild a query for EXPLAIN. Never recorded for /auth/*
@@ -104,6 +115,8 @@ class PerfQueryCounterServiceProvider extends ServiceProvider
             'path' => $request->path(),
             'query' => $request->getQueryString(),
             'status' => $event->response->getStatusCode(),
+            // hasModifiedRecords() of the connection that already exists (none is created here); null = no connection was used.
+            'modified' => (app('db')->getConnections()[config('database.default')] ?? null)?->hasModifiedRecords(),
             'queries' => $count,
             'ms' => round($totalMs, 3),
             'request_ms' => defined('LARAVEL_START') ? round((microtime(true) - LARAVEL_START) * 1000, 1) : null,
