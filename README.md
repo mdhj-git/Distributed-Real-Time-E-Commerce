@@ -231,3 +231,50 @@ docker compose exec app php artisan migrate
 ## سيناريو عرض المتطلب الثاني
 
 راجع [docs/r2-demo-scenario.md](docs/r2-demo-scenario.md) لخطوات العرض الكاملة أمام الأستاذ.
+
+## المتطلب الثالث: الأداء والتخزين المؤقت ونسخة القراءة
+
+الأرقام والتفسير في [`docs/r3-performance-report.md`](docs/r3-performance-report.md).
+
+### نسخة القراءة (اختيارية)
+
+نسخة MySQL للقراءة فقط، في الـ profile `replica` داخل `docker-compose.yml`. كل أمر يخصها يحتاج `--profile replica`، وبدونه لا يراها `docker compose stop` ولا `docker compose up -d`.
+
+أول إعداد (مرة واحدة؛ يُوقَف `app` لأن النسخ يتم بـ `mysqldump`):
+
+```bash
+docker compose stop app
+docker compose up -d mysql
+docker compose --profile replica up -d mysql-replica
+docker compose --profile replica exec mysql-replica bash /scripts/setup-replica.sh
+docker compose up -d app
+```
+
+- إن ظهر 502 بعد `up -d app` فنفّذ `docker compose restart nginx`.
+
+الاستخدام اليومي:
+
+```bash
+docker compose --profile replica up -d
+docker compose --profile replica exec -T mysql-replica bash /scripts/check-replica.sh
+docker compose --profile replica stop
+```
+
+- `check-replica.sh` يفحص الصحة، ورمز الخروج `0` يعني أن النسخة سليمة ولحقت بالأساسية.
+- لتفعيل القراءة منها ضع `DB_READ_HOST=mysql-replica` في `.env`. ولإيقافها أفرغ القيمة (`DB_READ_HOST=`): يعود التطبيق إلى القاعدة الأساسية في الطلب التالي.
+- نسخة بقيت متوقفة أكثر من يومين (مدة حفظ السجل الثنائي على الأساسية) قد تحتاج `setup-replica.sh --reseed` مع إيقاف `app`.
+
+### بيانات القياس و k6
+
+- توليد البيانات (`perf:seed`) وتشغيل k6 كلاهما موصوف في [`perf/MEASURE.md`](perf/MEASURE.md): القسم `0b` للبيانات والقسم `5` للقياس. لا يُكرَّر هنا.
+- القسم 13 من الملف نفسه فيه تشغيلة واحدة قبل نسخة القراءة وأخرى بعدها.
+- `PerfQueryCounterServiceProvider` للتطوير فقط: لا يعمل إلا مع `PERF_QUERY_LOG=true` (الافتراضي `false`)، ويجب أن يبقى `false` أثناء أي تشغيل k6.
+
+### مفاتيح `.env` الخاصة بهذا المتطلب (القيم الافتراضية في `.env.example`)
+
+- `DB_READ_HOST`: مضيف القراءة. فارغ (الافتراضي) يعني القاعدة الأساسية، ولا شيء يتغير.
+- `READ_YOUR_WRITES_ENABLED`: `true` افتراضياً. بعد أن يعدّل مستخدم بياناته تُقرأ بياناته من القاعدة الأساسية مدة قصيرة.
+- `READ_YOUR_WRITES_TTL_SECONDS`: `30` افتراضياً. مدة تلك القراءة من الأساسية، ويجب أن تبقى أطول من تأخر النسخة.
+- `CATALOG_READS_ON_PRIMARY`: `true` افتراضياً. مسارات الكتالوج (`categories` و`products`) تُقرأ دائماً من الأساسية.
+- `PRODUCTS_CACHE_LIST_TTL` و`PRODUCTS_CACHE_DETAIL_TTL` و`PRODUCTS_CACHE_CATEGORIES_TTL`: `600` و`1800` و`3600` ثانية. مدد كاش الكتالوج في Redis، والكتابة تُبطله بأرقام الإصدار.
+- `ETAG_ENABLED`: `true` افتراضياً. تفعيل ETag والرد 304 على `GET /products/{id}`.

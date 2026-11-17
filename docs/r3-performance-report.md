@@ -4,10 +4,62 @@ Status: Step 0 done, baseline recorded (Gate 0). Step 1 done: no N+1 on reads, w
 
 Steps 3 to 5 (branch `feat/r3-step3-5-caching`): Step 3 (cache store) is skipped because the store is already Redis. The same-day control `step3-pre` is recorded (2 valid runs). Step 4 (catalog cache in Redis) is implemented and measured (`step4-redis`, 2 valid runs, 99 percent HIT on the cached routes); the measurement files wait for the reviewer's commit. The latency gain on the cached routes cannot be credited to the cache alone, see "Reading" in "Step 4 k6 measurement". Step 5 (ETag) is done (Gates 5a and 5b). The ETag code works under load (304 on 16.5 to 17.9 percent of the `etag-on` requests, about 17 percent fewer response body bytes per request). No server-time effect can be shown or excluded: the differences between `etag-off2` (ETag off) and `etag-on` (ETag on, same sitting) in p50, p95, p99 and requests per second are all inside the run-to-run spread, and the p95 rule was waived for every `etag.js` label. The first baseline `etag-off` was measured on a faster host and is not comparable with `etag-on`. The main-scenario label `step5-etag` was NOT run, by decision. Numbers are filled only from the k6 output pasted by the reviewer.
 
+Step 6 (Read Replica, branch `feat/r3-step6-read-replica`): the replica, the read/write split and the read-your-writes routing are implemented and checked functionally (Gates A and B, commits `fa018a6` and `c4b0506`). The `perf:freshness-check` proof under load and the ABBA measurement were NOT run, by decision. The speed of the replica is measured by one run per label only (`replica-off` and `replica-on`, see `perf/MEASURE.md` section 13); their values are recorded in "Final summary (Requirement 3)" and in the Step 6 section (one valid run per label, no repeat). Step 7 (closure): the final before/after table and the explanation are in "Final summary (Requirement 3)" below.
+
 Rules for this file:
 - Every performance number (p50, p95, p99, requests per second, data volume) comes only from k6 output pasted by the reviewer, or from the JSON files in `perf/results/`. Nothing is estimated.
 - Screenshots in `docs/r3-evidence/` are supporting evidence only.
-- Sections for Steps 3 to 6 are reserved below and are filled later by a separate request.
+- The final summary (table and explanation) comes first, then the step sections. Every value comes from k6 output pasted by the reviewer.
+
+## Final summary (Requirement 3)
+
+Source of every number in this section: the step sections below, which hold the k6 output pasted by the reviewer. Nothing is estimated and no new percentage is computed here. This is the only Markdown table in this report, because the requirement asks for a before/after table.
+
+Layers implemented
+- HTTP ETag (Step 5): strong ETag and 304 on `GET /products/{id}`, switch `ETAG_ENABLED`.
+- Redis cache (Step 4): catalog reads cached with version keys, stock always live.
+- DB indexes and N+1 (Steps 1 and 2): no N+1 on any read route, one write-path fix (bulk insert in `POST /orders`), one query rewrite (deferred join in `OrderService::paginate`). `EXPLAIN` showed no new index to be justified, so none was added.
+- Read replica (Step 6): MySQL replica with GTID, read/write split, read-your-writes marker, catalog reads on the primary.
+
+Before and after (main scenario `baseline.js`, 20 VUs, constant, 60 s, mean of 2 valid runs, tag `phase:main`; the `etag.js` row is a single-route script and is not comparable with the other rows)
+
+| Layer | Label | p50 (ms) | p95 (ms) | p99 (ms) | req/s |
+|---|---|---|---|---|---|
+| Before (reference) | `baseline` | 677.21 | 859.75 | 961.72 | 29.33 |
+| N+1 and indexes | `step2-indexes` | 660.43 | 777.19 | 835.04 | 30.45 |
+| Same-day control for the cache (same code as `step2-indexes`, another day) | `step3-pre` | 671.07 | 809.81 | 871.91 | 29.81 |
+| Redis cache | `step4-redis` | 594.62 | 736.19 | 826.29 | 33.58 |
+| HTTP ETag (`etag.js`, one route) | `etag-off2` -> `etag-on` | 715.91 -> 742.35 | 1047.14 -> 1059.46 | 1413.64 -> 1740.19 | 26.80 -> 25.71 |
+| Read replica, before (one run, later sitting) | `replica-off` | 885.04 | 1066.25 | 1171.82 | 22.53 |
+| Read replica, after (one run, later sitting) | `replica-on` | 890.32 | 1248.90 | 1540.76 | 21.98 |
+
+The two replica rows are one valid run each (1352 and 1319 counted requests), measured in one sitting that was slower than the earlier sittings (`setup()` took about 77 to 79 s). They are NOT comparable with the rows above them, only with each other.
+
+Changes already recorded in the step sections (the rows come from different sittings and days, so only these adjacent comparisons are quoted)
+- `baseline` -> `step2-indexes`: p50 -2.5%, p95 -9.6%, p99 -13.2%, req/s +3.8%. Not attributed to the rewrite (no same-day control).
+- `step3-pre` -> `step4-redis`: p50 -11.4%, p95 -9.1%, p99 -5.2% (within the run-to-run spread), req/s +12.6%.
+- `etag-off2` -> `etag-on`: every latency difference is inside the run-to-run spread. Response body bytes per request 414.5 -> 343.4 (-17.2%); 304 responses were 16.5 and 17.9 percent of the requests.
+
+What happened, layer by layer (what changed server latency and what did not)
+- HTTP ETag: it saved network bytes, not server time. A 304 still runs the controller, the route binding query, the cache read and the `GetStock` call, so the server does the same work. No latency effect can be shown or excluded.
+- Redis cache: p50 and p95 are lower and MySQL received 36.7 percent fewer statements (`Com_stmt_execute`), with 99 percent HIT on the cached routes. The three uncached order routes improved by about the same amount and no same-session control with the cache bypassed was run, so the latency gain is not credited to the cache alone.
+- DB indexes and N+1: reads had no N+1 and no index was justified, so there is no read-side latency effect to claim. The write path went from 25 to 5 queries for a 20-item order. `step2-indexes` is lower than the baseline, but the improvement is not attributed to the deferred join.
+- Read replica: proven functionally for freshness (Step 6 below). It did not speed anything up: in the single `replica-off` / `replica-on` pair p50 and requests per second are about the same and p95 and p99 are higher with the replica, see the reading below.
+- Why latency moves so little: the system is queue-bound. `pm.max_children = 5` against 20 VUs gives about 29 req/s (Little's law, see the Baseline section), so most of the latency is waiting for a PHP-FPM worker, and no layer above changes that limit.
+
+Point 4: a product edit is visible at once despite the cache, the ETag and the replica (existing evidence only)
+- Cache: after an admin rename the detail is a MISS with the new name and the list is a MISS (Step 4, manual checks; the write moves the cache version keys).
+- ETag: after an admin rename the new ETag differs, and the old ETag gets 200 with the new body, never 304 (Step 5, manual matrix).
+- Replica (Gate B): the three catalog GET routes read from the primary (`reads.primary`, every query `rw=write` in the survey), so replica lag cannot hide an edit. A user's own writes read from the primary for 30 s (the marker): register, `POST /orders` and the admin status change were followed by reads that also used the primary. `security:proof` gave 15 of 15 with the split on.
+- Limit of this evidence: Gate B did not edit a product with the split on. The replica part rests on the catalog routing rule shown in the survey, not on a dedicated edit-under-lag run (that proof was not run, by decision).
+
+Reading of `replica-off` and `replica-on` (one run per label, same sitting, 20 VUs, 60 s, tag `phase:main`; both runs valid: failed rate 0, no 429, no 5xx, no `stock:null`)
+- Values: `replica-off` p50 885.04 ms, p95 1066.25 ms, p99 1171.82 ms, 22.53 req/s (1352 requests); `replica-on` p50 890.32 ms, p95 1248.90 ms, p99 1540.76 ms, 21.98 req/s (1319 requests).
+- p50 and requests per second are about the same. p95 and p99 are higher with the replica. The replica did not speed anything up.
+- It is one run per label (no repeat, no ABBA), so this is an indication and not a controlled result. The p95 difference is larger than the 10 percent run-to-run difference used for the p95 rule elsewhere in this report, so it is claimed neither as noise nor as proven.
+- Possible explanations, kept as hypotheses and not tested: the second MySQL server shares the same CPU and disk with the primary, and the replica buffer pool starts cold.
+- The conclusion that the system is queue-bound stays: `pm.max_children = 5` against 20 VUs, so most of the latency is waiting for a PHP-FPM worker, and the cached catalog routes read from Redis and the primary (`reads.primary`) either way.
+- This sitting was slower than the earlier sittings (`setup()` took about 77 to 79 s), so these two rows are NOT comparable with the rows above them, only with each other.
 
 ## Environment
 
@@ -973,4 +1025,11 @@ Conclusion for Step 5
 
 ## Step 6: Read Replica
 
-Reserved. Filled by a later request.
+Source: the functional results pasted by the reviewer at Gates A and B (commits `fa018a6` and `c4b0506`). No performance number is recorded in this section.
+
+- Design: the service `mysql-replica` (compose profile `replica`, MySQL 8.4, GTID, `read_only` and `super_read_only`) is seeded by `setup-replica.sh` with `mysqldump` while `app` is stopped; `check-replica.sh` is the health check. With `DB_READ_HOST` set the `mysql` connection splits reads (replica) and writes (primary, `sticky`). The `ReadRouting` middleware sends every non-GET request to the primary, every authenticated user to the primary for 30 s after that user wrote (the read-your-writes marker in Redis), and the three catalog GET routes always to the primary (`reads.primary`, switch `CATALOG_READS_ON_PRIMARY`). Console commands and migrations always read from the primary. The temporary query counter now also logs `rw`, `verb` and `modified` (development only, off unless `PERF_QUERY_LOG=true`).
+- Gate A (infrastructure) passed: the primary starts with GTID on the existing data (a restart with GTID off is also safe); the first `setup-replica.sh` run succeeded; both servers have the same GTID set and the same row counts (`orders`, `order_items`, `products`, `users`, `categories`); the replica rejects a write from the application user (error 1290); it catches up by itself after a stop; a plain `docker compose up -d` leaves it alone.
+- Gate B (routing) passed (the replica was delayed by 5 s for the write cases, the survey and the race test): register, `POST /orders` and the admin status change used only the primary and set the marker, and the reads that followed used the primary; login, a failed login and refresh set no marker; 13 GET calls over every GET route ran only `select` statements and modified nothing (catalog routes on the primary, `/auth/me`, `/orders`, `/orders/{id}` and `/notifications` on the replica when there is no marker); with the replica stopped `migrate:status` and the app boot work, `/health` and the catalog answer 200 and `GET /orders` returns 500; `orders:race-test` passed (one 201, nine 409); `security:proof` passed 15 of 15 with the split on and no delay.
+- Known limits: a change made by another user reaches a user only after the replica lag (under the 5 s delay `security:proof` gave 13 of 15, the two failing cases being exactly this); a marker TTL shorter than the lag would break read-your-writes; there is no automatic fallback if the replica is down, and setting `DB_READ_HOST=` empty returns to the primary at once.
+- Speed: measured only by one run per label, `replica-off` (`DB_READ_HOST=mysql`) and `replica-on` (`DB_READ_HOST=mysql-replica`), run by the reviewer from `perf/MEASURE.md` section 13. Result: `replica-off` p50 885.04 ms, p95 1066.25 ms, p99 1171.82 ms, 22.53 req/s; `replica-on` p50 890.32 ms, p95 1248.90 ms, p99 1540.76 ms, 21.98 req/s. p50 and req/s are about the same, p95 and p99 are higher with the replica, so the replica did not speed anything up. One run per label in a slow sitting, so these two runs are comparable only with each other and are an indication, not a controlled result (see "Final summary (Requirement 3)"). Evidence: `perf/results/replica-off-1.json`, `perf/results/replica-on-1.json`, `docs/r3-evidence/replica-off-run1.png` and `docs/r3-evidence/replica-on-run1.png`.
+- Not done by decision: the `perf:freshness-check` proof under a lagging replica and the ABBA measurement (two runs per label, MySQL counters on both servers, lag loop). Their absence means the freshness claim rests on the routing evidence above, and the speed claim on a single pair.
