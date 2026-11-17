@@ -278,3 +278,7 @@ docker compose --profile replica stop
 - `CATALOG_READS_ON_PRIMARY`: `true` افتراضياً. مسارات الكتالوج (`categories` و`products`) تُقرأ دائماً من الأساسية.
 - `PRODUCTS_CACHE_LIST_TTL` و`PRODUCTS_CACHE_DETAIL_TTL` و`PRODUCTS_CACHE_CATEGORIES_TTL`: `600` و`1800` و`3600` ثانية. مدد كاش الكتالوج في Redis، والكتابة تُبطله بأرقام الإصدار.
 - `ETAG_ENABLED`: `true` افتراضياً. تفعيل ETag والرد 304 على `GET /products/{id}`.
+
+## الطوابير والـ Worker (المتطلب الرابع)
+
+راجع [docs/r4-queues-and-worker.md](docs/r4-queues-and-worker.md) لشرح إرسال البريد عبر RabbitMQ، وسياسة إعادة المحاولة، والطابور الميت، وطريقة العرض.

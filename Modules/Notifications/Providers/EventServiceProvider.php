@@ -3,6 +3,8 @@
 namespace Modules\Notifications\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+use Modules\Notifications\Listeners\DispatchOrderPlacedEmail;
+use Modules\Notifications\Listeners\DispatchOrderStatusEmail;
 use Modules\Notifications\Listeners\NotifyOrderPlaced;
 use Modules\Notifications\Listeners\NotifyOrderStatusChanged;
 use Modules\Orders\Contracts\Events\OrderPlaced;
@@ -16,8 +18,8 @@ class EventServiceProvider extends ServiceProvider
      * @var array<string, array<int, string>>
      */
     protected $listen = [
-        OrderPlaced::class => [NotifyOrderPlaced::class],
-        OrderStatusChanged::class => [NotifyOrderStatusChanged::class],
+        OrderPlaced::class => [NotifyOrderPlaced::class, DispatchOrderPlacedEmail::class],
+        OrderStatusChanged::class => [NotifyOrderStatusChanged::class, DispatchOrderStatusEmail::class],
     ];
 
     /**

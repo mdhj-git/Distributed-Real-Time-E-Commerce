@@ -73,6 +73,32 @@ return [
             'after_commit' => false,
         ],
 
+        'rabbitmq' => [
+            'driver' => 'rabbitmq',
+            'queue' => env('RABBITMQ_QUEUE', 'default'),
+            'connection' => 'default',
+
+            'hosts' => [
+                [
+                    'host' => env('RABBITMQ_HOST', '127.0.0.1'),
+                    'port' => env('RABBITMQ_PORT', 5672),
+                    'user' => env('RABBITMQ_USER', 'guest'),
+                    'password' => env('RABBITMQ_PASSWORD', 'guest'),
+                    'vhost' => env('RABBITMQ_VHOST', '/'),
+                ],
+            ],
+
+            'options' => [
+                'queue' => [
+                    // r4: after the last failed attempt RabbitMQ moves the message to "orders.failed".
+                    'reroute_failed' => true,
+                    'failed_routing_key' => '%s.failed',
+                ],
+            ],
+
+            'worker' => env('RABBITMQ_WORKER', 'default'),
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],

@@ -87,6 +87,41 @@ services:
       interval: 10s
       retries: 10
 
+  # r4: message broker
+  # Dev-only credentials; override RABBITMQ_USER / RABBITMQ_PASSWORD in .env.
+  # Management UI: http://localhost:15672
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-shop}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-shop_dev}
+    ports:
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+  # r4: queue consumer.
+  # Overrides the entrypoint on purpose: composer install and migrate already
+  # run once, in the app service. Restart it after changing a listener or job:
+  #   docker compose restart worker
+  worker:
+    build:
+      context: ./docker/app
+    entrypoint: ["php", "artisan", "queue:work", "rabbitmq", "--queue=orders", "--tries=3", "--backoff=5"]
+    restart: unless-stopped
+    volumes:
+      - .:/var/www
+    depends_on:
+      app:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
   inventory:
     build:
       context: .
@@ -148,3 +183,4 @@ volumes:
   mysql_data:
   mysql_replica_data:
   inventory_db_data:
+  rabbitmq_data:
