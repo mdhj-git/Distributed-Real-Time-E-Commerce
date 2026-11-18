@@ -11,6 +11,7 @@
         "google/protobuf": "^5.36.2",
         "grpc/grpc": "~1.85.0",
         "laravel/framework": "^13.17",
+        "laravel/reverb": "^1.14",
         "laravel/tinker": "^3.0",
         "nwidart/laravel-modules": "^13.3",
         "php-open-source-saver/jwt-auth": "^2.9",

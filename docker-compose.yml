@@ -110,10 +110,12 @@ services:
   # Overrides the entrypoint on purpose: composer install and migrate already
   # run once, in the app service. Restart it after changing a listener or job:
   #   docker compose restart worker
+  # The dead letter queue is declared first (the command prints "Queue already exists." when it is there),
+  # so a message that fails for good is never dropped because "orders.failed" is missing.
   worker:
     build:
       context: ./docker/app
-    entrypoint: ["php", "artisan", "queue:work", "rabbitmq", "--queue=orders", "--tries=3", "--backoff=5"]
+    entrypoint: ["sh", "-c", "php artisan rabbitmq:queue-declare orders.failed && exec php artisan queue:work rabbitmq --queue=orders --tries=3 --backoff=5"]
     restart: unless-stopped
     volumes:
       - .:/var/www
@@ -122,6 +124,21 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+
+  # r4: real-time server (Laravel Reverb). Same Dockerfile as app, not published: the browser reaches it
+  # through nginx on port 8080 (path /app, see docker/nginx/default.conf). Restart it after changing .env:
+  #   docker compose restart reverb
+  reverb:
+    build:
+      context: ./docker/app
+    entrypoint: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080", "--debug"]
+    restart: unless-stopped
+    volumes:
+      - .:/var/www
+    depends_on:
+      app:
+        condition: service_healthy
+
   inventory:
     build:
       context: .
