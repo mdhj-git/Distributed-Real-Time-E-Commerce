@@ -282,3 +282,5 @@ docker compose --profile replica stop
 ## الطوابير والـ Worker (المتطلب الرابع)
 
 راجع [docs/r4-queues-and-worker.md](docs/r4-queues-and-worker.md) لشرح إرسال البريد عبر RabbitMQ، وسياسة إعادة المحاولة، والطابور الميت، وطريقة العرض.
+
+التحديثات اللحظية (Laravel Reverb) وصفحات الويب وخطوات الإثباتات الثلاثة: [docs/r4-realtime-and-ui.md](docs/r4-realtime-and-ui.md).
