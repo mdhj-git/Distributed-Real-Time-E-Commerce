@@ -2,11 +2,11 @@
 
 namespace Modules\Orders\Providers;
 
-use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Gate;
 use Modules\Orders\Models\Order;
 use Modules\Orders\Policies\OrderPolicy;
+use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class OrdersServiceProvider extends ModuleServiceProvider
 {
@@ -33,14 +33,15 @@ class OrdersServiceProvider extends ModuleServiceProvider
      * @var string[]
      */
     protected array $providers = [
+        BroadcastServiceProvider::class,
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
 
     /**
      * Define module schedules.
-     * 
-     * @param $schedule
+     *
+     * @param  $schedule
      */
     // protected function configureSchedules(Schedule $schedule): void
     // {

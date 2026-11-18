@@ -24,6 +24,15 @@ class OrderPolicy
         return $this->isAdmin($user) || $order->user_id === (int) $user->getAuthIdentifier();
     }
 
+    /**
+     * Following an order live (the private-orders.{id} channel) is for its owner only. The admin is refused on
+     * purpose: nobody else may follow that order. The admin watches every order on the admin channel instead.
+     */
+    public function follow(Authenticatable $user, Order $order): bool
+    {
+        return $order->user_id === (int) $user->getAuthIdentifier();
+    }
+
     private function isAdmin(Authenticatable $user): bool
     {
         return ($user->role ?? null) === UserRole::Admin;
