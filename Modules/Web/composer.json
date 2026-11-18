@@ -1,0 +1,8 @@
+{
+    "name": "modules/web",
+    "autoload": {
+        "psr-4": {
+            "Modules\\Web\\": ""
+        }
+    }
+}

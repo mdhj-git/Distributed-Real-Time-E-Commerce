@@ -3,5 +3,6 @@
     "Users": true,
     "Products": true,
     "Orders": true,
-    "Notifications": true
+    "Notifications": true,
+    "Web": true
 }

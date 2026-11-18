@@ -4,7 +4,7 @@
 
 ## 1. حدود الوحدات
 
-الوحدات: `Shared` و`Users` و`Products` و`Orders` و`Notifications`.
+الوحدات: `Shared` و`Users` و`Products` و`Orders` و`Notifications` و`Web` (واجهة الصفحات فقط، انظر القسم 13).
 
 ### البنية الداخلية
 
@@ -41,7 +41,7 @@ Modules/Orders/
 
 ### Contract أم Event
 
-- `Contract`: حين يتوقف عملي على النتيجة، أو يجب أن يفشل عملي إن فشل الطرف الآخر. مثال: حجز المخزون.
+- `Contract`: حين يتوقف عملي على النتيجة، أو يجب أن يفشل عملي إن فشل الطرف الآخر. مثال: حجز المخزون. ومثال آخر: يعرف `Notifications` بريد المستخدم وقت الإرسال عبر `Modules\Users\Contracts\UserDirectory`، دون استيراد نموذج `User`.
 - `Event`: حين أعلن أن شيئاً حدث ولا أحتاج نتيجة. مثال: إنشاء الإشعار.
 - المستمعون متزامنون ما لم يُجعلوا `ShouldQueue`. الفرق هنا فصل المعرفة لا التوقيت.
 
@@ -237,3 +237,26 @@ UPDATE stock SET quantity = quantity + ? WHERE product_id = ? AND quantity + ? >
 - تغيير يجريه مستخدم آخر لا يصل إلى مستخدم إلا بعد تأخر النسخة (replica lag). تغييرات المستخدم نفسه محمية بعلامة read-your-writes مدة `READ_YOUR_WRITES_TTL_SECONDS` (30 ثانية افتراضياً). مثال: عميل أو مسؤول يقرأ طلباً أنشأه غيره قبل لحظات قد يحصل على 404 حتى تلحق النسخة (هذا سبب فشل الحالتين 6 و9 في `security:proof` عند تأخير 5 ثوانٍ).
 - النسخة للقراءة فقط (`read_only` و`super_read_only`)، فكل كتابة عليها ترفضها. وأوامر الـ console والمهاجرات (ومنها `migrate` عند إقلاع الحاوية) تقرأ دائماً من القاعدة الأساسية ولا تعتمد على النسخة.
 - لتشغيل Seeder الـ Users وحده: `docker compose exec app php artisan db:seed --class='Modules\Users\Database\Seeders\UsersDatabaseSeeder'`.
+
+## 13. واجهة الويب (وحدة Web)
+
+- وحدة `Web` قشرة فقط: قوالب Blade تحمّل كل بياناتها بـ `fetch` من `/api/v1` ومعها رمز JWT. لا تُمرَّر نماذج ولا بيانات من الخادم إلى أي قالب. القيمة الوحيدة القادمة من الخادم هي مفتاح Reverb العام في الوسم `<meta name="reverb-key">`.
+- مسارات الصفحات في `Modules/Web/routes/web.php` بلا مجموعة `web` (لا جلسات ولا كوكيز ولا CSRF)، فيبقى التطبيق بلا حالة. ملف `routes/web.php` في الجذر فارغ عمداً.
+- من يستطيع فتح صفحة أو استخدامها يقرره الـ API وقنوات البث، لا مسارات الصفحات. لذلك لا يحجب JavaScript أي صفحة بنفسه: يعرض ما أجاب به الـ API (401 أو 403 وغيرهما).
+- الملفات الثابتة في `public/ui` (يخدمها nginx). لا CDN ولا موارد من الإنترنت ولا خطوة بناء npm. نسخة `pusher-js` المصغّرة محلية في `public/ui/vendor`.
+- بيانات الـ API تُعرض بـ `textContent` لا `innerHTML`.
+- كل طلب فاشل يعرض رمز الحالة و`error.code` و`error.message` وتفاصيل الحقول و`request_id`، ومعها `Retry-After` عند 429.
+- الرمز في `sessionStorage` (لكل لسان جلسته)، فيمكن فتح المسؤول والعميل في لسانين من المتصفح نفسه.
+- لا يُعدَّل أي مسار API لأجل الواجهة. رفع الصور بـ `POST` فقط (قاعدة القسم 4).
+
+## 14. البث اللحظي (Reverb)
+
+- الخادم: خدمة `reverb` (Laravel Reverb) في Docker. لا تُنشر منفذاً، ويصل إليها المتصفح عبر nginx على `8080` في المسار `/app`. تحتاج الصورة إلى الامتداد `pcntl`.
+- وحدة `Orders` تملك كل شيء: الحدثان `OrderPlacedBroadcast` و`OrderStatusChangedBroadcast` (`ShouldBroadcastNow`، فيُرسلان أثناء الطلب ولا يمرّان بالطابور ولا يعتمدان على الـ worker)، والمستمعان `BroadcastOrderPlaced` و`BroadcastOrderStatusChanged`، والقناتان في `Broadcasting/`.
+- القناتان خاصتان:
+  - `private-orders.{id}`: صاحب الطلب فقط (`OrderPolicy::follow`). المسؤول مرفوض عمداً، فلا أحد غيره يتابع الطلب.
+  - `private-admin.orders`: دور `admin` فقط (`OrderPolicy::viewAll`).
+- التفويض عبر `POST /api/v1/broadcasting/auth` بالحارس `api` (Bearer). بلا رمز: 401. دور خاطئ أو طلب غيرك: 403. المسار والقناتان مسجَّلة في `BroadcastServiceProvider` التابع لـ `Orders` لا في `bootstrap/app.php`.
+- الحمولة `order_id` و`status` فقط. تُجلب التفاصيل من `/api/v1`.
+- المستمعان يلفّان البث بـ `try/catch` ويسجّلان الفشل: عطل Reverb لا يُفشل طلب إنشاء الطلب. مهلة الاتصال بـ Reverb ثانية واحدة (`config/broadcasting.php`).
+- متغيرات `.env`: `BROADCAST_CONNECTION=reverb` و`REVERB_APP_ID` و`REVERB_APP_KEY` و`REVERB_APP_SECRET` و`REVERB_HOST` و`REVERB_PORT` و`REVERB_SCHEME` (قيم تطوير فقط). بعد تغييرها: `docker compose restart reverb`.

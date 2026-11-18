@@ -6,19 +6,30 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Modules\Users\Contracts\UserDirectory;
 use Modules\Users\Contracts\UserRole;
 use Modules\Users\Models\User;
+use Modules\Users\Services\EloquentUserDirectory;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class UsersServiceProvider extends ModuleServiceProvider
 {
-    protected string $name      = 'Users';
+    protected string $name = 'Users';
+
     protected string $nameLower = 'users';
 
     protected array $providers = [
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function register(): void
+    {
+        parent::register();
+
+        // The only way other modules learn a user's email address (see Contracts/UserDirectory).
+        $this->app->bind(UserDirectory::class, EloquentUserDirectory::class);
+    }
 
     public function boot(): void
     {
@@ -33,7 +44,7 @@ class UsersServiceProvider extends ModuleServiceProvider
             $email = $request->input('email');
 
             return Limit::perMinute(5)->by(
-                (is_string($email) ? mb_strtolower(trim($email)) : '') . '|' . $request->ip()
+                (is_string($email) ? mb_strtolower(trim($email)) : '').'|'.$request->ip()
             );
         });
     }

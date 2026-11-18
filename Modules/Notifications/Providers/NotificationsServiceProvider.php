@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Gate;
 use Modules\Notifications\Models\UserNotification;
 use Modules\Notifications\Policies\UserNotificationPolicy;
 use Modules\Notifications\Services\Email\EmailSender;
-use Modules\Notifications\Services\Email\LogEmailSender;
+use Modules\Notifications\Services\Email\MailEmailSender;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class NotificationsServiceProvider extends ModuleServiceProvider
@@ -35,8 +35,8 @@ class NotificationsServiceProvider extends ModuleServiceProvider
     {
         parent::register();
 
-        // The real email service replaces LogEmailSender here, and nowhere else.
-        $this->app->bind(EmailSender::class, LogEmailSender::class);
+        // The email service is chosen here, and nowhere else. The transport (log or smtp) comes from MAIL_MAILER.
+        $this->app->bind(EmailSender::class, MailEmailSender::class);
     }
 
     public function boot(): void
