@@ -5,11 +5,17 @@ services:
   migrate:
     build:
       context: ./docker/app
+    # Reuse the app image (do not create a separate migrate image) so a local
+    # --no-build start works with the image that is already present.
+    image: distributed-real-time-e-commerce-app:latest
     environment:
       RUN_SETUP: "1"
     command: ["true"]
     volumes:
       - .:/var/www
+      # r5: use the current entrypoint from the mounted source even when the local
+      # image is older; the Dockerfile still copies the same file at build time.
+      - ./docker/app/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       - uploads_data:/var/www/storage/app/public
     depends_on:
       mysql:
@@ -29,6 +35,7 @@ services:
       RUN_SETUP: "0"
     volumes:
       - .:/var/www
+      - ./docker/app/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       # r5: uploaded product images must not live inside one replica's disk.
       - uploads_data:/var/www/storage/app/public
     depends_on:
