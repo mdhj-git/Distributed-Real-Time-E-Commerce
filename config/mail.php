@@ -79,11 +79,21 @@ return [
             'transport' => 'array',
         ],
 
+        // Dev-only local inbox (axllent/mailpit in docker-compose.yml).
+        'mailpit' => [
+            'transport' => 'smtp',
+            'scheme' => 'smtp',
+            'host' => 'mailpit',
+            'port' => 1025,
+        ],
+
+        // Try real SMTP first; if Gmail refuses the credentials, still deliver to the local inbox
+        // so notifications are never silently lost while developing.
         'failover' => [
             'transport' => 'failover',
             'mailers' => [
                 'smtp',
-                'log',
+                'mailpit',
             ],
             'retry_after' => 60,
         ],
