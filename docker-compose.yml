@@ -1,10 +1,39 @@
 services:
+  # r5: one-shot setup. It runs once, before any replica exists, so three app
+  # containers can never run composer / key:generate / migrate at the same time.
+  # All app replicas start with RUN_SETUP=0 and depend on this succeeding.
+  migrate:
+    build:
+      context: ./docker/app
+    environment:
+      RUN_SETUP: "1"
+    command: ["true"]
+    volumes:
+      - .:/var/www
+      - uploads_data:/var/www/storage/app/public
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+
+  # r5: three replicas of the same app service. Docker publishes the DNS name
+  # "app" with one A record per replica; nginx load balances across all of them.
   app:
     build:
       context: ./docker/app
+    deploy:
+      replicas: 3
+    environment:
+      RUN_SETUP: "0"
     volumes:
       - .:/var/www
+      # r5: uploaded product images must not live inside one replica's disk.
+      - uploads_data:/var/www/storage/app/public
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       redis:
@@ -13,18 +42,22 @@ services:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]
       interval: 10s
       retries: 10
-      start_period: 300s
+      start_period: 60s
 
   nginx:
     image: nginx:alpine
     volumes:
       - .:/var/www:ro
+      # r5: nginx serves /storage from the same shared volume the apps write to.
+      - uploads_data:/var/www/storage/app/public:ro
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "8080:80"
     depends_on:
+      # service_started, not service_healthy: nginx must come up even if one
+      # replica is stopped, so it can route around it (Requirement 5, resiliency).
       app:
-        condition: service_healthy
+        condition: service_started
 
   mysql:
     image: mysql:8.4
@@ -106,24 +139,38 @@ services:
       timeout: 10s
       retries: 10
       start_period: 30s
-  # r4: queue consumer.
-  # Overrides the entrypoint on purpose: composer install and migrate already
-  # run once, in the app service. Restart it after changing a listener or job:
-  #   docker compose restart worker
-  # The dead letter queue is declared first (the command prints "Queue already exists." when it is there),
-  # so a message that fails for good is never dropped because "orders.failed" is missing.
+
+  # r4: queue consumers.
+  # r5: three workers on the SAME "orders" queue. Every message is taken by one
+  # worker only; if one worker stops the other two keep draining the queue.
+  # The job is idempotent (Redis cache lock), so at-least-once redelivery cannot
+  # send the same confirmation twice.
+  # Overrides the entrypoint on purpose: setup already ran in the "migrate" service.
+  # Restart after changing a listener or job: docker compose restart worker
   worker:
     build:
       context: ./docker/app
+    deploy:
+      replicas: 3
     entrypoint: ["sh", "-c", "php artisan rabbitmq:queue-declare orders.failed && exec php artisan queue:work rabbitmq --queue=orders --tries=3 --backoff=5"]
     restart: unless-stopped
     volumes:
       - .:/var/www
     depends_on:
-      app:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
+
+  # Local dev mail inbox. Emails are addressed to the real user email from users.email,
+  # but delivered here so notifications can be inspected without SMTP credentials.
+  # Web inbox: http://localhost:8025  (to switch to real Gmail, change MAIL_* in .env only)
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
   # r4: real-time server (Laravel Reverb). Same Dockerfile as app, not published: the browser reaches it
   # through nginx on port 8080 (path /app, see docker/nginx/default.conf). Restart it after changing .env:
@@ -136,8 +183,8 @@ services:
     volumes:
       - .:/var/www
     depends_on:
-      app:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   inventory:
     build:
@@ -201,3 +248,6 @@ volumes:
   mysql_replica_data:
   inventory_db_data:
   rabbitmq_data:
+  # r5: shared by all app replicas (and nginx), so an image uploaded through
+  # one replica is visible through every other replica.
+  uploads_data:
