@@ -236,5 +236,5 @@ docker compose exec -T nginx nginx -t
 ## 11. الحالة الحالية لهذا المشروع
 
 - التنفيذ الأساسي للمتطلب الخامس **تم دمجه في `main`** عبر PR #20.
-- هذا الملف واستراتيجية `least_conn` يُضافان في PR جديد من `feat/r5-least-connections` إلى `main`.
+- هذا الملف واستراتيجية `least_conn` يُضافان في **PR #23** من `feat/r5-least-connections` إلى `main`: https://github.com/mdhj-git/Distributed-Real-Time-E-Commerce/pull/23
 - آخر تحقق محلي: 58 اختباراً ناجحاً، توزيع على 3 نسخ، 500 طلب كلها 200، failover بدون 502، واستراتيجية `least_conn` فعّالة.
