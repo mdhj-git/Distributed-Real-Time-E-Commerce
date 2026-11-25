@@ -17,6 +17,7 @@ class DispatchOrderPlacedEmail
                 $event->userId,
                 "Order #{$event->orderId} received",
                 "We received your order #{$event->orderId}.",
+                "order.{$event->orderId}.placed",
             );
         } catch (Throwable $e) {
             Log::error('Could not queue order email.', [

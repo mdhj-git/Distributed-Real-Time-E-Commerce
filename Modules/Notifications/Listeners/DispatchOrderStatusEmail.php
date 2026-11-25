@@ -17,6 +17,7 @@ class DispatchOrderStatusEmail
                 $event->userId,
                 "Order #{$event->orderId} is now {$event->to}",
                 "Your order #{$event->orderId} changed from {$event->from} to {$event->to}.",
+                "order.{$event->orderId}.status.{$event->to}",
             );
         } catch (Throwable $e) {
             Log::error('Could not queue order status email.', [
