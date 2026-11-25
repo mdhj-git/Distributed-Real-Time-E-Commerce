@@ -25,6 +25,7 @@
 
 ### تفاصيل موزّع الحمل (`docker/nginx/default.conf`)
 
+- **استراتيجية التوزيع: الأقل انشغالاً (`least_conn;`)** — كل طلب يذهب إلى النسخة التي لديها أقل عدد من الاتصالات النشطة، بدل الدوران الافتراضي (Round Robin).
 - `upstream app_pool` فيه `zone app_pool 64k;` لأن إصدار nginx الحالي يطلب shared-memory zone عند استخدام `resolve`.
 - ثلاثة أسطر `server app:9000 resolve max_fails=0;`؛ Docker DNS يعيد الأعمدة بالدوران، فتكرار الاسم يجعل nginx يجمع عناوين النسخ الثلاث حتى لو كانت إجابة DNS لحظياً ناقصة.
 - `fastcgi_next_upstream error timeout http_500 http_503` يعيد المحاولة على نسخة أخرى عند فشل الاتصال.
@@ -72,18 +73,28 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful
 ## 3) الإثبات ١: الطلبات تتوزع على النسخ الثلاث
 
 ```bash
-for i in $(seq 1 15); do
+for i in $(seq 1 30); do
   curl -sI http://localhost:8080/api/v1/health | grep -i '^x-served-by'
 done | sort | uniq -c
 ```
 
-النتيجة المحلية الفعلية (٣ عناوين مختلفة = ٣ نسخ):
+النتيجة المحلية الفعلية مع `least_conn` (٣ عناوين مختلفة = ٣ نسخ):
 
 ```text
-      6 X-Served-By: 172.18.0.10:9000
-      4 X-Served-By: 172.18.0.12:9000
-      5 X-Served-By: 172.18.0.15:9000
+     10 X-Served-By: 172.18.0.9:9000
+     10 X-Served-By: 172.18.0.12:9000
+     10 X-Served-By: 172.18.0.14:9000
 ```
+
+وتحت ضغط ٥٠٠ طلب / ٥٠ متزامناً توزّعت حسب الاتصالات النشطة:
+
+```text
+    181 X-Served-By: 172.18.0.9:9000
+    152 X-Served-By: 172.18.0.12:9000
+    167 X-Served-By: 172.18.0.14:9000
+```
+
+كل رموز الحالة كانت `200` (٥٠٠ طلب → `500 200`).
 
 ## 4) الإثبات ٢: الاستمرارية عند توقف نسخة
 
