@@ -147,13 +147,6 @@ services:
       retries: 10
       start_period: 30s
 
-  # r4: queue consumers.
-  # r5: three workers on the SAME "orders" queue. Every message is taken by one
-  # worker only; if one worker stops the other two keep draining the queue.
-  # The job is idempotent (Redis cache lock), so at-least-once redelivery cannot
-  # send the same confirmation twice.
-  # Overrides the entrypoint on purpose: setup already ran in the "migrate" service.
-  # Restart after changing a listener or job: docker compose restart worker
   worker:
     build:
       context: ./docker/app
