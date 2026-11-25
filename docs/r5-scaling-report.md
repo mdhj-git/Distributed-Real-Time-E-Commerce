@@ -19,9 +19,8 @@
 | # | المشكلة قبل الإصلاح | لماذا تظهر مع ٣ نسخ | الإصلاح | الملفات |
 |---|---|---|---|---|
 | 1 | `php artisan migrate` و`composer install` و`key:generate` كانا داخل `entrypoint.sh` لكل حاوية | ثلاث حاويات تنفّذ نفس المهاجرة في نفس اللحظة → سباق على جدول `migrations` وإنشاء الجداول | خدمة **`migrate`** واحدة تُنفّذ الإعداد مرة، وكل النسخ تنتظر `service_completed_successfully` ثم تبدأ بـ `RUN_SETUP=0`. خدمة `migrate` تستخدم صورة `app` نفسها | `docker-compose.yml`, `docker/app/entrypoint.sh` |
-| 2 | الصور تُحفظ في `storage/app/public` داخل قرص الحاوية | صورة تُرفع عبر النسخة ١ لا تظهر عند طلب النسخة ٢ | حجم مشترك **`uploads_data`** مُركَّب في النسخ الثلاث وفي nginx (الذي يخدم `/storage`) | `docker-compose.yml` |
-| 3 | nginx كان يمرّر إلى `app` واحداً ولا يعيد المحاولة | توقف نسخة = 502 لكل الطلبات التي تصلها | توزيع على كل عناوين `app` + `fastcgi_next_upstream` + `error_page 502 = @php_retry` + ترويسة `X-Served-By` (شرح التفاصيل أدناه) | `docker/nginx/default.conf` |
-| 4 | تسليم الرسائل من RabbitMQ "مرة واحدة على الأقل" | ثلاثة عمّال يزيدون احتمال وصول نسختين من نفس الرسالة → بريد تأكيد مكرّر | قفل ذري في Redis عبر `Cache::add` بمفتاح عمل ثابت (`order.{id}.placed`) يُحرَّر عند الفشل، ويُبقى ٢٤ ساعة بعد النجاح | `SendOrderEmailJob.php`, المستمعان |
+| 2 | nginx كان يمرّر إلى `app` واحداً ولا يعيد المحاولة | توقف نسخة = 502 لكل الطلبات التي تصلها | توزيع على كل عناوين `app` + `fastcgi_next_upstream` + `error_page 502 = @php_retry` + ترويسة `X-Served-By` (شرح التفاصيل أدناه) | `docker/nginx/default.conf` |
+| 3 | تسليم الرسائل من RabbitMQ "مرة واحدة على الأقل" | ثلاثة عمّال يزيدون احتمال وصول نسختين من نفس الرسالة → بريد تأكيد مكرّر | قفل ذري في Redis عبر `Cache::add` بمفتاح عمل ثابت (`order.{id}.placed`) يُحرَّر عند الفشل، ويُبقى ٢٤ ساعة بعد النجاح | `SendOrderEmailJob.php`, المستمعان |
 
 ### تفاصيل موزّع الحمل (`docker/nginx/default.conf`)
 
@@ -37,6 +36,14 @@
 - **الجلسات:** التطبيق API بـ JWT بلا حالة، والواجهة تحفظ الرمز في `sessionStorage` لكل لسان → لا حالة على القرص.
 - **قاعدة البيانات:** MySQL واحدة مشتركة (ونسخة القراءة في المتطلب ٣ تعمل كما هي).
 - **البث اللحظي:** `ShouldBroadcastNow` يرسل من أي نسخة إلى Reverb عبر اسم الخدمة `reverb`، والعميل يصل إليه عبر nginx على المنفذ 8080 → لا يعتمد على النسخة التي استقبلت الطلب.
+- **الصور والسجلات:** تقع في `storage/` (`storage/app/public` و`storage/logs`)، وكل النسخ تشاركها لأنها تربط مجلد المشروع نفسه، فالصورة المرفوعة عبر نسخة واحدة تخدمها كل النسخ. وإن بُني الكود داخل الصورة (image) فسيحتاج هذا المجلد إلى تخزين مشترك (حجم مسمّى أو object storage).
+- **عنوان العميل الحقيقي:** ليس مشكلة خلف nginx، لأن nginx يتحدث FastCGI (وليس قفزة HTTP proxy) ويمرّر `REMOTE_ADDR` بنفسه (`fastcgi_param REMOTE_ADDR $remote_addr;` في `fastcgi_params`، و`default.conf` يضمّنه بـ `include fastcgi_params;`). لذلك يرى محدِّدا المعدل `api` و`login` عنوان العميل، ولا يلزم تعديل `TrustProxies`.
+
+### استراتيجية التوزيع
+
+- نستخدم Round Robin الافتراضي في nginx (بلا `least_conn` وبلا `ip_hash` في `upstream app_pool`).
+- السبب: النسخ متطابقة وبلا حالة محلية (كل الحالة في MySQL وRedis وRabbitMQ)، وكلفة الطلبات متقاربة.
+- لا نستخدم التوجيه الثابت (IP Hash) لأنه يخفي أخطاء الحالة المحلية، ولأن إثباتنا يأتي من جهاز واحد (IP واحد) فسيرسل الطلبات الـ 500 كلها إلى نسخة واحدة.
 
 ---
 
@@ -69,64 +76,80 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful
 
 ---
 
-## 3) الإثبات ١: الطلبات تتوزع على النسخ الثلاث
+## 3) الإثبات: ٥٠٠ طلب تتوزع على النسخ الثلاث، والنظام يعمل عند إيقاف نسخة
 
-```bash
-for i in $(seq 1 15); do
-  curl -sI http://localhost:8080/api/v1/health | grep -i '^x-served-by'
-done | sort | uniq -c
+المسار `/api/v1/health` خارج محدِّد المعدل `api`. الإثبات (PowerShell 5.1): ٢٥٠ طلباً والنسخ الثلاث تعمل، ثم إيقاف نسخة `app` واحدة، ثم ٢٥٠ طلباً أخرى، ثم تشغيل النسخة من جديد. الجدول لكل نصف يعدّ الطلبات حسب قيمة `X-Served-By` وحسب حالة HTTP:
+
+```powershell
+$url = 'http://127.0.0.1:8080/api/v1/health'
+function Get-HealthSample($n) {
+    1..$n | ForEach-Object {
+        $h = curl.exe -s -o NUL -D - $url
+        [pscustomobject]@{
+            Status = (($h | Select-Object -First 1) -replace '^HTTP/\S+\s+(\d+).*', '$1')
+            Served = (($h | Where-Object { $_ -like 'X-Served-By:*' }) -replace '^X-Served-By:\s*', '')
+        }
+    }
+}
+$a = Get-HealthSample 250
+$id = (docker compose ps -q app)[1]
+docker stop $id
+$b = Get-HealthSample 250
+docker start $id
+'--- first 250 (3 replicas) ---'
+$a | Group-Object Served | Select-Object Count, Name
+$a | Group-Object Status | Select-Object Count, Name
+'--- second 250 (one replica stopped) ---'
+$b | Group-Object Served | Select-Object Count, Name
+$b | Group-Object Status | Select-Object Count, Name
 ```
 
-النتيجة المحلية الفعلية (٣ عناوين مختلفة = ٣ نسخ):
+النتيجة المحلية الفعلية:
 
 ```text
-      6 X-Served-By: 172.18.0.10:9000
-      4 X-Served-By: 172.18.0.12:9000
-      5 X-Served-By: 172.18.0.15:9000
+--- first 250 (3 replicas) ---
+
+Count Name
+----- ----
+   84 172.18.0.8:9000
+   83 172.18.0.9:9000
+   83 172.18.0.12:9000
+
+Count Name
+----- ----
+  250 200
+
+--- second 250 (one replica stopped) ---
+
+Count Name
+----- ----
+  125 172.18.0.9:9000
+  124 172.18.0.8:9000
+    1 172.18.0.12:9000, app_pool : 172.18.0.8:9000
+
+Count Name
+----- ----
+  250 200
 ```
 
-## 4) الإثبات ٢: الاستمرارية عند توقف نسخة
+- النصف الأول: ٣ عناوين مختلفة (٣ نسخ) تتقاسم الطلبات تقريباً بالتساوي، وكلها `200`.
+- النصف الثاني: بعد إيقاف النسخة `172.18.0.12` لم يصل أي طلب إليها، وبقيت كل الطلبات `200` ولا `502` واحدة. الطلب الواحد الذي ظهر فيه `172.18.0.12:9000, app_pool : 172.18.0.8:9000` حاول أولاً نسخة موقوفة ثم أعاد nginx المحاولة على نسخة سليمة فأجابت `200`.
 
-`docker compose stop app-2` لا يعمل لأن `app-2` اسم حاوية وليس اسم خدمة؛ استخدم اسم الحاوية أو معرّفها:
+## 4) منع البريد المكرّر مع ثلاثة عمّال على طابور واحد
 
-```bash
-ID=$(docker compose ps -q app | head -1)
-docker stop "$ID"
-for i in $(seq 1 20); do curl -s -o /dev/null -w '%{http_code} ' http://localhost:8080/api/v1/health; done; echo
-docker start "$ID"
-```
+تسليم RabbitMQ "مرة واحدة على الأقل"، فقد تصل الرسالة نفسها إلى عاملين. قفل ذري في Redis (`Cache::add` بالمفتاح `order.{id}.placed`) يجعل الرسالة المكرّرة تُتجاهل (`Duplicate order email skipped`) فلا يُرسل البريد ثانية، ويُحرَّر القفل إذا فشل الإرسال ليتمكن إعادة المحاولة من الإرسال. الاختبار الآلي:
 
-النتيجة المحلية الفعلية عند إيقاف `app-1` ثم `app-3` (20 طلباً لكل منهما): **كلها 200، ولا 502 واحدة**.
-
-## 5) الإثبات ٣: ثلاثة عمّال على طابور واحد بلا بريد مكرّر
-
-```bash
-docker compose ps worker          # worker-1 / worker-2 / worker-3
-
-UID=$(docker compose exec -T app php artisan tinker --execute='echo Modules\Users\Models\User::query()->where("email", "demo.customer.a@shop.test")->value("id");')
-docker compose exec -T app php artisan tinker --execute="Illuminate\Support\Facades\Cache::forget('order-email:order.9999.placed'); Modules\Orders\Contracts\Events\OrderPlaced::dispatch(9999, $UID); Modules\Orders\Contracts\Events\OrderPlaced::dispatch(9999, $UID);"
-sleep 5
-for c in $(docker compose ps -q worker); do docker exec "$c" sh -c 'grep "Order #9999" /var/www/storage/logs/laravel.log 2>/dev/null | tail -5'; done
-```
-
-النتيجة المحلية الفعلية (السجل مشترك بين العمّال لأن المشروع مُركَّب من المضيف):
-
-```text
-local.INFO: Duplicate order email skipped. {"user_id":5,"subject":"Order #9999 received"}
-local.INFO: Email sent.                    {"user_id":5,"subject":"Order #9999 received"}
-```
-
-أي أن الرسالة المكرّرة التي التقطها عامل آخر لم تُرسل ثانية. والاختبار الآلي:
-
-```bash
+```powershell
 docker compose exec -T app php artisan test --filter=OrderEmailIdempotencyTest
-# Tests: 2 passed
 ```
+
+النتيجة المحلية الفعلية: `Tests: 2 passed (5 assertions)`.
 
 ---
 
-## 6) الحدود المعروفة
+## 5) الحدود المعروفة
 
 - `deploy.replicas` ثابت في ملف Compose؛ لتغيير العدد: `docker compose up -d --scale app=5 --scale worker=5` (أو عدّل `replicas` في الملف).
 - nginx يستخدم فحوصات سلبية + محاولة إضافية عند 502. لا يوجد active health check في nginx مفتوح المصدر.
 - صندوق Mailpit/Gmail من المتطلب ٤ يعمل كما هو؛ الإشعارات تُرسل من أي عامل، والمستلم دائماً بريد صاحب الطلب.
+- `error_page 502 = @php_retry` يعيد إرسال الطلب إلى نسخة أخرى، ومنه طلب POST ربما نفّذته PHP فعلاً حين تموت النسخة في منتصف الطلب، فقد يُنشأ طلب شراء مرتين (نادر؛ غير معالَج، ولا تعديل في الكود).

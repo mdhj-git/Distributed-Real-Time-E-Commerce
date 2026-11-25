@@ -287,9 +287,9 @@ docker compose --profile replica stop
 
 ## التوسع وتوزيع الأحمال (المتطلب الخامس)
 
-ثلاث نسخ من `app` وثلاثة عمّال `worker` خلف nginx، مع خدمة `migrate` واحدة تمنع سباق المهاجرات وحجم `uploads_data` مشترك للصور. الشرح الكامل وأوامر الإثبات (التوزيع، توقف نسخة، منع البريد المكرّر): [docs/r5-scaling-report.md](docs/r5-scaling-report.md).
+ثلاث نسخ من `app` وثلاثة عمّال `worker` خلف nginx، مع خدمة `migrate` واحدة تمنع سباق المهاجرات. الشرح الكامل وأوامر الإثبات (التوزيع، توقف نسخة، منع البريد المكرّر): [docs/r5-scaling-report.md](docs/r5-scaling-report.md).
 
-```bash
+```powershell
 docker compose up -d --build
-for i in $(seq 1 10); do curl -sI http://localhost:8080/api/v1/health | grep -i '^x-served-by'; done
+1..10 | ForEach-Object { curl.exe -sI http://127.0.0.1:8080/api/v1/health | Select-String -Pattern '^X-Served-By' }
 ```
